@@ -14,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json")
+    .AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true)
     .Build();
 
 var clientId = configuration["Dhan:ClientId"]!;

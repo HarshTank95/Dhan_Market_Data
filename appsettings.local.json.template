@@ -1,0 +1,15 @@
+// ============================================
+// INSTRUCTIONS:
+// ============================================
+// 1. Copy this file as: appsettings.local.json
+// 2. Replace the placeholder values with your actual credentials
+// 3. This file is git-ignored and will NOT be committed to GitHub
+// 4. The values here will override appsettings.json at runtime
+// ============================================
+
+{
+  "Dhan": {
+    "ClientId": "YOUR_ACTUAL_CLIENT_ID_HERE",
+    "AccessToken": "YOUR_ACTUAL_ACCESS_TOKEN_HERE"
+  }
+}
