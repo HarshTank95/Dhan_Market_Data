@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "DhanMarketData.Console": {
+      "commandName": "Project",
+      "workingDirectory": "$(SolutionDir)"
+    }
+  }
+}

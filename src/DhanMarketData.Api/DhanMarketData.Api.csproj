@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DhanMarketData.Api</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DhanMarketData.Core\DhanMarketData.Core.csproj" />
+    <ProjectReference Include="..\DhanMarketData.Infrastructure\DhanMarketData.Infrastructure.csproj" />
+    <ProjectReference Include="..\DhanMarketData.Backtesting\DhanMarketData.Backtesting.csproj" />
+    <ProjectReference Include="..\DhanMarketData.Persistence\DhanMarketData.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>
