@@ -64,3 +64,8 @@ backtest_results/
 
 # OS
 Thumbs.db
+
+# SQLite runtime DB files (Phase 2 onwards — schema lives in migrations, not the .db)
+*.db
+*.db-shm
+*.db-wal
