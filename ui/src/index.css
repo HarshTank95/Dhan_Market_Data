@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: oklch(0.72 0.18 145);
+}
+
+html, body, #root {
+  height: 100%;
+}

@@ -15,8 +15,8 @@ Companion to `RESTRUCTURE_PLAN.md`. Records what was actually built per phase, w
 | 2 | EF Core SQLite + entities + seeds + repos | ✅ Done |
 | 3 | `[ConfigField]` attribute + screener/strategy registry | ✅ Done |
 | 4 | Web API surface (controllers, SignalR, runner, DPAPI) | ✅ Done — smoke-tested |
-| 5 | React UI (Vite + Tailwind v4 + shadcn) | ⏳ Deferred to next session |
-| 5.5 | Regression checkpoint | ⏳ Pending |
+| 5 | React UI (Vite + Tailwind v4 + TanStack Query + SignalR) | ✅ Done |
+| 5.5 | Integration smoke (API ↔ UI ↔ Vite proxy) | ✅ Done — end-to-end backtest run still gated on a fresh Dhan token |
 | 6 | Retire console + refresh docs | ⏳ Pending |
 
 ---
@@ -201,9 +201,75 @@ Single console project → 6-project solution under `src/`.
 
 ---
 
+## Phase 5 — React UI
+
+Local-first SPA at `ui/`. Single-page tab switcher (no router) — Strategies / Run / Results / Credentials.
+
+**Stack chosen for MVP:**
+- Vite 6 + React 19 + TypeScript (strict)
+- Tailwind v4 via `@tailwindcss/vite` (no v3-style `tailwind.config.js`, no postcss config)
+- TanStack Query v5 — server state + 5s polling on the runs list
+- `@microsoft/signalr` — live run progress
+
+**Deliberate MVP skips** (all noted for post-MVP add):
+- Router — replaced by tab switcher in `App.tsx`
+- shadcn `init` — minimal Tailwind components written inline; tonal palette is zinc + emerald accent
+- `openapi-typescript` — types in `src/types.ts` are hand-written from the C# DTOs
+- `react-hook-form` + Zod — controlled inputs for MVP
+
+**Files** (all under `ui/`):
+- `package.json`, `vite.config.ts`, 3× `tsconfig*.json`, `index.html`, `index.css`
+- `src/main.tsx` — `QueryClientProvider` shell
+- `src/App.tsx` — tab switcher
+- `src/types.ts` — API DTOs (mirror Api.Contracts)
+- `src/lib/api.ts` — typed `fetch` wrapper with all endpoints
+- `src/lib/signalr.ts` — `useBacktestProgress(runId)` hook merges all 6 hub events into one state
+- `src/components/DynamicConfigForm.tsx` — registry-schema-driven form, groups by `[ConfigField(Group=...)]`
+- `src/pages/StrategiesPage.tsx` — list + click-to-edit, Reset/Clone buttons for built-ins
+- `src/pages/RunPage.tsx` — preset picker + Start/Cancel + live progress bar + streaming trade table
+- `src/pages/ResultsPage.tsx` — past-runs table (5 s polling) + selected run's trades + CSV download link
+- `src/pages/CredentialsPage.tsx` — Dhan client ID + token (server encrypts via DPAPI)
+
+**Dev wiring:**
+- Vite dev on `localhost:5173`, API on `127.0.0.1:5000`
+- Vite proxy: `/api`, `/hubs` (with `ws: true`), `/openapi` → API
+- API CORS already allow-lists `http://localhost:5173`
+
+**Build verified:** `npm install` (102 packages, 21 s); `npm run build` → `tsc -b` clean, Vite output 312 kB JS / 14 kB CSS in 1.04 s.
+
+---
+
+## Phase 5.5 — Integration smoke test
+
+**What was tested:** the runtime contract between the React UI dev server, the Vite proxy, and the running ASP.NET Core API.
+
+**Procedure:** Started both servers (`dotnet run --project src/DhanMarketData.Api` on `127.0.0.1:5000` and `npm run dev` in `ui/` on `localhost:5173`), then issued requests to the Vite dev server URL (so requests flow through the proxy → API → response back).
+
+**Results — all endpoints reachable through the proxy:**
+
+| Test | Result |
+|---|---|
+| `GET http://localhost:5173/` (SPA shell) | 200, `<title>Dhan Market — Backtest Console</title>` returned |
+| `GET /api/strategies` (via proxy) | 4 built-in presets returned |
+| `GET /api/registry/screeners` (via proxy) | volumespike 3 fields · breakout 4 · dominancecandle 13 · openingrange 12 |
+| `GET /openapi/v1.json` (via proxy) | 14 paths documented |
+| Migrate-on-startup | DB created idempotently |
+| API binds 127.0.0.1 only | confirmed (LAN unreachable) |
+| Vite binds localhost (default) | IPv6 `::1` and IPv4 `localhost` resolved |
+
+**Not tested (out of scope without a fresh Dhan token):**
+- Triggering a real backtest run via `POST /api/runs`. The token in `appsettings.local.json` is expired (JWT `exp` Feb 2026; today is May 3 2026). Cache covers Mar 2022 → Feb 12 2026; any 50-day backtest from "today" would partially hit the API and fail at first cache miss.
+- Live SignalR event stream end-to-end (negotiate works; events validated only by static reasoning).
+- Cancellation / orphan-run recovery.
+- CSV byte-equality vs legacy console output (Phase 0 baselines were skipped).
+
+**To unblock the deferred tests:** refresh the Dhan token via `PUT /api/credentials`, kick off a 30-day backtest against the existing cache (so most data is cache-hit), watch SignalR events, compare CSV with a corresponding console run.
+
+---
+
 ## Next session
 
-**Phase 5 — React UI** is the largest remaining chunk:
+**Phase 5 — React UI** ✅ done. Remaining:
 - Vite + React 19 + TypeScript scaffold under `ui/`
 - Tailwind v4 + shadcn/ui setup
 - Add: TanStack Query, TanStack Router, react-hook-form + Zod, openapi-typescript, @microsoft/signalr
