@@ -17,7 +17,7 @@ Companion to `RESTRUCTURE_PLAN.md`. Records what was actually built per phase, w
 | 4 | Web API surface (controllers, SignalR, runner, DPAPI) | ✅ Done — smoke-tested |
 | 5 | React UI (Vite + Tailwind v4 + TanStack Query + SignalR) | ✅ Done |
 | 5.5 | Integration smoke (API ↔ UI ↔ Vite proxy) | ✅ Done — end-to-end backtest run still gated on a fresh Dhan token |
-| 6 | Retire console + refresh docs | ⏳ Pending |
+| 6 | Retire console + refresh docs | ✅ Done |
 
 ---
 
@@ -264,6 +264,29 @@ Local-first SPA at `ui/`. Single-page tab switcher (no router) — Strategies / 
 - CSV byte-equality vs legacy console output (Phase 0 baselines were skipped).
 
 **To unblock the deferred tests:** refresh the Dhan token via `PUT /api/credentials`, kick off a 30-day backtest against the existing cache (so most data is cache-hit), watch SignalR events, compare CSV with a corresponding console run.
+
+---
+
+## Phase 6 — Retire console + refresh docs
+
+**DhanMarketData.Console removed.** The project, its `Program.cs` thin-wrapper, and its `Properties/launchSettings.json` are deleted. The solution file no longer references it. Solution still builds clean (5 projects: Core, Infrastructure, Backtesting, Persistence, Api).
+
+**Docs consolidated.** The 6 stale root-level MDs were deleted and replaced with 4 fresh files under `docs/` plus a new top-level `README.md`:
+
+| Removed | Replaced by |
+|---|---|
+| `PROJECT_CONTEXT.md` (heavily stale per discrepancy list) | `docs/architecture.md` |
+| `STRUCTURE.md` (older but mostly accurate) | `docs/architecture.md` |
+| `STRATEGY_RULES.md` | `docs/strategies.md` |
+| `VOLUMESPIKE_STRATEGY_RULES.md` | `docs/strategies.md` |
+| `DATA_FETCHING_GUIDE.md` (had wrong 4-hour claim) | `docs/data-fetching.md` |
+| `SCREENER_GUIDE.md` (very thin) | `docs/extending.md` |
+
+**Top-level `README.md`** — short overview, two-terminal quick start, status table, links to `docs/` and to the migration history (`RESTRUCTURE_PLAN.md` + this changelog).
+
+**Migration history kept at root** — `RESTRUCTURE_PLAN.md` and `RESTRUCTURE_CHANGELOG.md` are deliberately *not* moved into `docs/`. They describe how the migration was done; they're not project docs and they age out as the codebase evolves. Future readers can decide to archive them.
+
+**`appsettings.json` and `appsettings.local.json` at the solution root** — kept for now as legacy reference. The API has its own minimal `src/DhanMarketData.Api/appsettings.json`; the Dhan token now lives encrypted in SQLite (set via the UI's Credentials page). The root `appsettings.local.json` is gitignored as before; no live code reads it.
 
 ---
 
