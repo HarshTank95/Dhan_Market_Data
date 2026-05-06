@@ -5,7 +5,8 @@ import { api } from '../lib/api'
 // Server returns RunStatus as a number; keep string fallback in case it ever flips.
 type ServerStatus = number | string
 
-const ACTIVE_STATUS_VALUES: Array<ServerStatus> = [0, 1, 5, 'Queued', 'Running', 'Cancelling']
+// RunStatus enum (server): 0 Queued · 1 Running · 2 Completed · 3 Failed · 4 Cancelling · 5 Cancelled
+const ACTIVE_STATUS_VALUES: Array<ServerStatus> = [0, 1, 4, 'Queued', 'Running', 'Cancelling']
 const ACTIVE_STATUSES = new Set<ServerStatus>(ACTIVE_STATUS_VALUES)
 
 type StatusKey = 'queued' | 'running' | 'cancelling' | 'other'
@@ -13,7 +14,7 @@ type StatusKey = 'queued' | 'running' | 'cancelling' | 'other'
 function statusKey(s: ServerStatus): StatusKey {
   if (s === 0 || s === 'Queued') return 'queued'
   if (s === 1 || s === 'Running') return 'running'
-  if (s === 5 || s === 'Cancelling') return 'cancelling'
+  if (s === 4 || s === 'Cancelling') return 'cancelling'
   return 'other'
 }
 

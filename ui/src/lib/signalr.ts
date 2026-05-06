@@ -40,12 +40,12 @@ const initial = (runId: number): RunProgress => ({
 // string fallback in case the contract ever flips to enum-as-string.
 function mapStatus(serverStatus: number | string): RunProgress['status'] | undefined {
   const s = typeof serverStatus === 'string' ? serverStatus.toLowerCase() : serverStatus
-  // 0 Queued · 1 Running · 2 Completed · 3 Failed · 4 Cancelled · 5 Cancelling
+  // 0 Queued · 1 Running · 2 Completed · 3 Failed · 4 Cancelling · 5 Cancelled
   if (s === 0 || s === 'queued') return 'idle'
-  if (s === 1 || s === 'running' || s === 5 || s === 'cancelling') return 'running'
+  if (s === 1 || s === 'running' || s === 4 || s === 'cancelling') return 'running'
   if (s === 2 || s === 'completed') return 'completed'
   if (s === 3 || s === 'failed') return 'failed'
-  if (s === 4 || s === 'cancelled') return 'cancelled'
+  if (s === 5 || s === 'cancelled') return 'cancelled'
   return undefined
 }
 
