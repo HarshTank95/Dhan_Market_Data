@@ -15,6 +15,10 @@ public sealed class BacktestHubBroadcaster : IBacktestHubBroadcaster
     public Task RunStarted(int runId, int totalDaysPlanned, CancellationToken ct = default) =>
         Group(runId).SendAsync("RunStarted", new { runId, totalDaysPlanned }, ct);
 
+    public Task FetchProgress(int runId, int stocksProcessed, int totalStocks, string symbol, int currentChunk, int totalChunks, CancellationToken ct = default) =>
+        Group(runId).SendAsync("FetchProgress",
+            new { runId, stocksProcessed, totalStocks, symbol, currentChunk, totalChunks }, ct);
+
     public Task ChunkProgress(int runId, int currentChunk, int totalChunks, int daysProcessed, CancellationToken ct = default) =>
         Group(runId).SendAsync("ChunkProgress", new { runId, currentChunk, totalChunks, daysProcessed }, ct);
 

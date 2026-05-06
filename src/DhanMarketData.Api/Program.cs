@@ -11,6 +11,19 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// $(SolutionDir) in launchSettings.json is a Visual Studio macro; `dotnet run` does not
+// expand it, so relative paths (instruments.csv, data/, dhanmarketdata.db) end up under
+// the project folder. ContentRoot is already captured above, so it's safe to anchor CWD
+// to the directory containing DhanMarketData.sln before any DB/file IO runs.
+for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+{
+    if (File.Exists(Path.Combine(dir.FullName, "DhanMarketData.sln")))
+    {
+        Directory.SetCurrentDirectory(dir.FullName);
+        break;
+    }
+}
+
 // -------- Database --------
 var dbConnection = builder.Configuration.GetConnectionString("AppDb")
     ?? "Data Source=dhanmarketdata.db";

@@ -48,8 +48,10 @@
 │   │   └── Migrations/
 │   │
 │   └── DhanMarketData.Api/             # web host
-│       ├── Program.cs                  # DI, EF migrate-on-startup, OpenAPI, SignalR, CORS
-│       ├── Properties/launchSettings.json   # workdir = solution root
+│       ├── Program.cs                  # DI, EF migrate-on-startup, OpenAPI, SignalR, CORS,
+│       │                               # walks up to DhanMarketData.sln + SetCurrentDirectory
+│       │                               # (workingDirectory in launchSettings is a VS-only macro)
+│       ├── Properties/launchSettings.json   # workdir = solution root (VS only)
 │       ├── AssemblyInfo.cs             # [assembly: SupportedOSPlatform("windows")]
 │       ├── Contracts/     request + response DTOs (Strategy, Run, Credentials)
 │       ├── Services/      ITokenProtector / DpapiTokenProtector,
@@ -66,7 +68,7 @@
         ├── types.ts                    # hand-written API DTOs
         ├── lib/                        api.ts (typed fetch), signalr.ts (live progress hook)
         ├── components/                 DynamicConfigForm (registry-schema-driven)
-        └── pages/                      Strategies, Run, Results, Credentials
+        └── pages/                      Strategies, Run, Queue, Results, Credentials
 ```
 
 ## Dependency graph
@@ -88,14 +90,44 @@ ui/  ─────────────────────────
 2. `RunsController` writes a `BacktestRun` row (`Status = Queued`) and pushes a `RunRequest` onto the `Channel<RunRequest>`.
 3. `BacktestRunner` (single-consumer `IHostedService`) dequeues, opens a DI scope, flips `Status → Running`.
 4. Runner builds an `IPresetExecutor`, hands it the preset row + run params. The executor synthesises an `IConfiguration` from the preset's JSON columns and feeds it to the existing **unmodified** `ScreenerFactory` / `StrategyFactory`.
-5. `BacktestOrchestrator.RunBacktestAsync(...)` runs with `IProgress<BacktestProgress>` + `CancellationToken`. Per chunk (30 days):
-   - cache lookup → Dhan API on miss
-   - screen each stock → produce signal candles
-   - strategy `ExecuteTrade` → `Trade` if conditions met
-   - emit `TradeRecorded` progress event
+5. `BacktestOrchestrator.RunBacktestAsync(...)` runs with `IProgress<BacktestProgress>` + `CancellationToken`. The token is threaded all the way down through `HistoricalDataCache` → `DhanDataApiClient` (rate limiter, HTTP `PostAsync`, response read) so a cancel is observed within ~250 ms (one rate-limit slice), not at the next chunk boundary. Two phases:
+   - **Fetch** — warm cache for every selected stock; emit `FetchProgress` per stock with `(symbol, stocksProcessed, totalStocks)`.
+   - **Per chunk (30 days)** — screen each stock → produce signal candles → strategy `ExecuteTrade` → `Trade` if conditions met → emit `TradeRecorded`. End of chunk emits `ChunkProgress`.
 6. Runner drains progress events serially → writes `TradeRecord` rows + broadcasts SignalR events.
 7. Final status: `Completed | Failed | Cancelled`.
 
+## SignalR events (`/hubs/backtest`)
+
+Client calls `JoinRun(runId)` to subscribe to that run's group. Server-pushed events:
+
+| Event | When |
+|---|---|
+| `RunStarted` | Runner flips `Status → Running` |
+| `FetchProgress` | One per stock during the cold-cache warmup phase (`{symbol, stocksProcessed, totalStocks}`) |
+| `ChunkProgress` | At each 30-day chunk boundary (`{currentChunk, totalChunks, daysProcessed, daysPlanned}`) |
+| `TradeRecorded` | Each new `Trade` produced by the strategy (full trade payload) |
+| `RunCompleted` / `RunFailed` / `RunCancelled` | Terminal — runner exits the per-run scope |
+
+The UI hydrates state with `GET /api/runs/{id}` + `GET /api/runs/{id}/trades` after `JoinRun` so it's correct even if events were missed during reconnect.
+
+## Queue + cancellation lifecycle
+
+- `BacktestRunQueue` wraps a `Channel<RunRequest>` (capacity 10) plus a `ConcurrentDictionary<int, CancellationTokenSource>` of *in-flight* runs (the dictionary is keyed only while a runner is actively processing). Three lookups: `TryRegisterCancellation`, `TryCancel(id)` (returns `false` if there is no live CTS), and `HasInFlight(id)`.
+- `DELETE /api/runs/{id}` (single cancel) — checks `TryCancel`'s return value: if there's no in-flight token, the row is force-finalised to `Cancelled` instead of left in `Cancelling` (otherwise no one would ever flip it).
+- `POST /api/runs/cancel-active` — bulk cancel for the Queue page's "Stop all" button.
+- `POST /api/runs/cleanup-orphans` — manual safety net. Walks every `Queued`/`Running`/`Cancelling` row, skips any with `HasInFlight(id) == true`, force-finalises the rest. Mirrors the startup orphan-reset but on demand.
+- **Startup recovery** — `BacktestRunRepository.ResetOrphanedRunsAsync` on `Program.cs` startup flips any `Queued`/`Running`/`Cancelling` row from a previous process to `Failed`. Logs `Reset N orphaned run(s) from previous process.` so it's verifiable.
+
+## UI tabs
+
+| Tab | Purpose |
+|---|---|
+| Strategies | List/edit user presets, Reset/Clone built-ins (built-ins are read-only) |
+| Run | Pick preset → set stock count + days + timeframe → Start → live progress (composite fetch + chunk bar). `activeRunId` persisted in `localStorage` so a tab switch doesn't lose the session. |
+| Queue | All currently active runs (`Queued`/`Running`/`Cancelling`) with per-row Stop and bulk "Stop all". Polls `GET /api/runs` every 1.5 s. |
+| Results | Past-runs table, selected run's trade list + P&L, CSV download. |
+| Credentials | Set Dhan client ID + access token (server encrypts via DPAPI). |
+
 ## Behavior preservation guarantee
 
-The screening and entry/exit logic from the legacy console is preserved byte-for-byte. The only engine change in the migration was an additive `IProgress<>` + `CancellationToken` parameter on `BacktestOrchestrator.RunBacktestAsync`. No method-body edits, no reordering, no default changes. See `RESTRUCTURE_CHANGELOG.md` for the audit trail.
+The screening and entry/exit logic from the legacy console is preserved byte-for-byte. The only engine change in the migration was an additive `IProgress<>` + `CancellationToken` parameter on `BacktestOrchestrator.RunBacktestAsync`; Phase 7 added a `FetchProgress` event kind and threaded the token through the HTTP/cache layer (additive only — no logic re-ordering, no default changes). See `RESTRUCTURE_CHANGELOG.md` for the audit trail.

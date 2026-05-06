@@ -18,6 +18,7 @@ Companion to `RESTRUCTURE_PLAN.md`. Records what was actually built per phase, w
 | 5 | React UI (Vite + Tailwind v4 + TanStack Query + SignalR) | ✅ Done |
 | 5.5 | Integration smoke (API ↔ UI ↔ Vite proxy) | ✅ Done — end-to-end backtest run still gated on a fresh Dhan token |
 | 6 | Retire console + refresh docs | ✅ Done |
+| 7 | Post-MVP UX hardening (Queue tab, cancel/orphan recovery, fetch progress) | ✅ Done |
 
 ---
 
@@ -287,6 +288,88 @@ Local-first SPA at `ui/`. Single-page tab switcher (no router) — Strategies / 
 **Migration history kept at root** — `RESTRUCTURE_PLAN.md` and `RESTRUCTURE_CHANGELOG.md` are deliberately *not* moved into `docs/`. They describe how the migration was done; they're not project docs and they age out as the codebase evolves. Future readers can decide to archive them.
 
 **`appsettings.json` and `appsettings.local.json` at the solution root** — kept for now as legacy reference. The API has its own minimal `src/DhanMarketData.Api/appsettings.json`; the Dhan token now lives encrypted in SQLite (set via the UI's Credentials page). The root `appsettings.local.json` is gitignored as before; no live code reads it.
+
+---
+
+## Phase 7 — Post-MVP UX hardening
+
+After Phase 6 the app worked, but a few real-world rough edges surfaced once it was actually used. Phase 7 fixes those without touching the screening / strategy / engine logic. Behavior-preservation rule still holds — the only engine touch is *additive* progress reporting + `CancellationToken` plumbing into the HTTP and cache layers.
+
+### Working-directory anchoring (`Program.cs`)
+
+`launchSettings.json`'s `workingDirectory = $(SolutionDir)` is a Visual Studio macro — it's empty when launched via `dotnet run`. Result: `instruments.csv not found` and `dhanmarketdata.db` written under `src/DhanMarketData.Api/`.
+
+Fix: walk up from `AppContext.BaseDirectory` until we find `DhanMarketData.sln` and `Directory.SetCurrentDirectory` to it. Runs once, right after `WebApplication.CreateBuilder(args)`.
+
+### Orphan-run recovery (`BacktestRunRepository.ResetOrphanedRunsAsync`)
+
+Previously reset only `Running` + `Cancelling`. Now also `Queued`, because a row queued in the previous process has no live `CancellationTokenSource` after restart and would otherwise sit forever.
+
+```csharp
+.Where(r => r.Status == RunStatus.Queued
+         || r.Status == RunStatus.Running
+         || r.Status == RunStatus.Cancelling)
+```
+
+### FetchProgress event (engine → hub → UI)
+
+Backtests start with a long cold-cache fetch phase before any chunk is processed. With only `ChunkProgress`/`TradeRecorded`, the UI sat at 0% until the first chunk completed (could be minutes).
+
+**Added** — `BacktestEventKind.FetchProgress` + `StocksProcessed`/`TotalStocks`/`CurrentSymbol` init properties on `BacktestProgress`. `BacktestOrchestrator.FetchHistoricalDataAsync` now emits one event per stock as it warms the cache. `BacktestHub.FetchProgress(...)` is the new server-pushed event; `signalr.ts` consumes it and `RunPage.tsx` shows "Fetching candles · {symbol} (X/Y stocks)" under the progress bar.
+
+### Cancellation propagation through HTTP + cache
+
+The orchestrator already accepted a `CancellationToken`, but the HTTP client and cache didn't, so a cancel during a fetch could only be observed at the next chunk boundary (often minutes away).
+
+Threaded `CancellationToken ct = default` through:
+- `DhanDataApiClient.GetIntradayCandlesAsync` → passed to `_rateLimiter.WaitAsync`, `Task.Delay` for 250 ms throttle, `_httpClient.PostAsync`, `Content.ReadAsStringAsync`.
+- `HistoricalDataCache.LoadOrFetchAsync` → passed to `File.ReadAllTextAsync`, the API client, `File.WriteAllTextAsync`. `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }` added so a cancel mid-fetch doesn't bake a false "missing data" marker into the negative cache.
+
+### Cancel + orphan finalisation (`RunsController` + `BacktestRunQueue`)
+
+Two bugs compounded into "rows stuck in Cancelling forever":
+
+1. **DELETE didn't check whether the in-flight token actually existed.** If the runner had already drained the row from the queue or the API had restarted since, `TryCancel` returned `false` but the controller still wrote `Status = Cancelling`. No one would ever flip it.
+
+2. **No way to clean up orphans without restarting** — the only orphan reset was at startup, and users wouldn't always want to bounce the API to clear bad rows.
+
+**Fixed in `BacktestRunQueue`** — added `bool HasInFlight(int runId) => _inFlight.ContainsKey(runId);` so callers can distinguish "runner is working on this" from "no live runner exists".
+
+**Fixed in `RunsController.Cancel`** — capture `var tokenSignaled = _queue.TryCancel(id);` and force `Cancelled` (terminal) when `tokenSignaled == false`. `Queued` rows always go straight to `Cancelled` (they're not in flight by definition).
+
+**New `POST /api/runs/cleanup-orphans`** — manual safety net. Walks all `Queued`/`Running`/`Cancelling` rows, skips any with `HasInFlight(id) == true`, force-finalises the rest with `ErrorMessage = "Force-cleaned (no in-flight runner)."`. Returns `{ cleanedCount }`.
+
+**New `POST /api/runs/cancel-active`** — bulk cancel for the Queue page's "Stop all" button. Same per-row logic as DELETE; returns `{ cancelledCount }`.
+
+### Queue page (`ui/src/pages/QueuePage.tsx` — new)
+
+Dedicated tab for queue management. Polls `GET /api/runs` every 1.5 s via TanStack Query, filters to active statuses (`0/1/5` or string `Queued/Running/Cancelling`), renders one row per run with: ID, preset, status badge (with pulsing dot when Running), per-row progress bar / "Stopping…" / "Waiting in queue…", relative-time created, per-row Stop button, and a "Stop all (N)" header button when more than one is active. Empty state covers both initial-load and "truly nothing active" without flicker (no Loading… intermediate).
+
+### Run-page persistence and UX (`ui/src/pages/RunPage.tsx`)
+
+- **Survives tab navigation.** `activeRunId` written to `localStorage` (`dhan.activeRunId`); cleared once status hits a terminal state. Hydration via `Promise.all([api.getRun(id), api.getRunTrades(id)])` after SignalR `JoinRun` so the UI is correct on reload even if events were missed during disconnect. Trades de-duped by `id` on `TradeRecorded` to keep hydration race-safe.
+- **Composite progress.** Fetch phase is weighted 70% of the bar (it's the slow part) + chunk progress for the remaining 30%. Pulsing emerald dot + symbol/X-of-Y line during fetch.
+- **Stop button visible across the whole active window** (Queued + Running + Cancelling), not just Running.
+- **Form fields disabled** while a run is active so a second start doesn't slip past while one is queued behind another.
+- **NumberInput** — replaced `<input type="number">` (cramped browser spinners + `04` leading-zero quirk) with a text input + `inputMode="numeric"`, manual digit filtering, and a unit suffix label.
+- **QuickPicks** — chip buttons for common values (stocks 5/50/200/500 · days 5/30/90/365) so the user doesn't have to type for the common case.
+
+### What was NOT touched (behavior-preservation re-confirmed)
+
+- All 4 screeners — byte-identical.
+- All 4 strategies — byte-identical.
+- `BacktestEngine.cs` — byte-identical.
+- `BacktestOrchestrator` core loop ordering and `chunkSize = 30` — unchanged. Only the `FetchHistoricalDataAsync` helper and additional `progress?.Report(...)` / `cancellationToken.ThrowIfCancellationRequested()` calls were added.
+- All config field names, types, defaults — unchanged.
+
+### Verified
+
+- `dotnet build` clean across all 5 projects.
+- API restart correctly resets `Queued` + `Running` + `Cancelling` rows from the previous process to `Failed` (log line: `Reset N orphaned run(s) from previous process.`).
+- `POST /api/runs/cleanup-orphans` finalises stuck rows without an API restart.
+- Cancelling mid-fetch returns control within ~250 ms (one rate-limit slice), not at the next chunk boundary.
+- Tab navigation away from the Run tab during a run and back returns to a hydrated, correct UI.
+- Queue tab "Stop all" cancels every active run and the runner picks up the cancellation tokens.
 
 ---
 

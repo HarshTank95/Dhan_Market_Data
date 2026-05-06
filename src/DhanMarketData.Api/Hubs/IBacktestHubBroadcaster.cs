@@ -6,6 +6,7 @@ namespace DhanMarketData.Api.Hubs;
 public interface IBacktestHubBroadcaster
 {
     Task RunStarted(int runId, int totalDaysPlanned, CancellationToken ct = default);
+    Task FetchProgress(int runId, int stocksProcessed, int totalStocks, string symbol, int currentChunk, int totalChunks, CancellationToken ct = default);
     Task ChunkProgress(int runId, int currentChunk, int totalChunks, int daysProcessed, CancellationToken ct = default);
     Task TradeRecorded(int runId, TradeRecordDto trade, CancellationToken ct = default);
     Task RunCompleted(int runId, RunCompletedSummary summary, CancellationToken ct = default);

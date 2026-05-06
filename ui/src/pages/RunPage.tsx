@@ -1,8 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { useBacktestProgress } from '../lib/signalr'
+
+const ACTIVE_RUN_KEY = 'dhan.activeRunId'
+
+function readStoredRunId(): number | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_RUN_KEY)
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
 
 export function RunPage() {
   const presets = useQuery({ queryKey: ['strategies'], queryFn: api.listStrategies })
@@ -10,7 +23,7 @@ export function RunPage() {
   const [stockCount, setStockCount] = useState(500)
   const [backtestDays, setBacktestDays] = useState(50)
   const [timeframe, setTimeframe] = useState('5min')
-  const [activeRunId, setActiveRunId] = useState<number | null>(null)
+  const [activeRunId, setActiveRunId] = useState<number | null>(() => readStoredRunId())
 
   const progress = useBacktestProgress(activeRunId)
 
@@ -22,19 +35,41 @@ export function RunPage() {
       timeframe,
       exchangeSegment: 'NSE_EQ',
     }),
-    onSuccess: r => setActiveRunId(r.runId),
+    onSuccess: r => {
+      try { localStorage.setItem(ACTIVE_RUN_KEY, String(r.runId)) } catch {}
+      setActiveRunId(r.runId)
+    },
   })
+
+  // Drop the persisted runId once the run reaches a terminal state — otherwise
+  // the next page load would resurrect a run the user has already seen finish.
+  useEffect(() => {
+    const s = progress?.status
+    if (s === 'completed' || s === 'failed' || s === 'cancelled') {
+      try { localStorage.removeItem(ACTIVE_RUN_KEY) } catch {}
+    }
+  }, [progress?.status])
 
   const cancel = useMutation({
     mutationFn: () => api.cancelRun(activeRunId!),
   })
 
-  const running = progress?.status === 'running'
   const finished = progress?.status === 'completed' || progress?.status === 'failed' || progress?.status === 'cancelled'
+  const active = activeRunId !== null && !finished
 
-  const pct = progress && progress.totalDaysPlanned > 0
-    ? Math.round((progress.daysProcessed / progress.totalDaysPlanned) * 100)
-    : 0
+  // Composite progress: each chunk = 1.0 of progress; within a chunk, fetch ≈ 70%, backtest ≈ 30%.
+  // This keeps the bar moving even before the first ChunkProgress event fires.
+  const pct = (() => {
+    if (!progress || progress.totalChunks === 0) return 0
+    const completedChunks = progress.daysProcessed > 0 && progress.totalDaysPlanned > 0
+      ? (progress.daysProcessed / progress.totalDaysPlanned) * progress.totalChunks
+      : Math.max(0, progress.currentChunk - 1)
+    const fetchPart = progress.fetch && progress.fetch.totalStocks > 0
+      ? (progress.fetch.stocksProcessed / progress.fetch.totalStocks) * 0.7
+      : 0
+    const fraction = (completedChunks + fetchPart) / progress.totalChunks
+    return Math.min(100, Math.round(fraction * 100))
+  })()
 
   return (
     <div className="space-y-6">
@@ -46,7 +81,7 @@ export function RunPage() {
               value={presetId ?? ''}
               onChange={e => setPresetId(e.target.value ? Number(e.target.value) : null)}
               className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-              disabled={running}
+              disabled={active}
             >
               <option value="">Pick one…</option>
               {presets.data?.map(p => (
@@ -55,17 +90,19 @@ export function RunPage() {
             </select>
           </Field>
           <Field label="Stock count">
-            <NumberInput value={stockCount} onChange={setStockCount} min={1} max={500} disabled={running} />
+            <NumberInput value={stockCount} onChange={setStockCount} min={1} max={500} disabled={active} suffix="stocks" />
+            <QuickPicks options={[5, 50, 200, 500]} active={stockCount} onPick={setStockCount} disabled={active} />
           </Field>
           <Field label="Backtest days">
-            <NumberInput value={backtestDays} onChange={setBacktestDays} min={1} max={1000} disabled={running} />
+            <NumberInput value={backtestDays} onChange={setBacktestDays} min={1} max={1000} disabled={active} suffix="days" />
+            <QuickPicks options={[5, 30, 90, 365]} active={backtestDays} onPick={setBacktestDays} disabled={active} />
           </Field>
           <Field label="Timeframe">
             <select
               value={timeframe}
               onChange={e => setTimeframe(e.target.value)}
               className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-              disabled={running}
+              disabled={active}
             >
               {['1min','5min','15min','25min','60min','1day'].map(tf =>
                 <option key={tf} value={tf}>{tf}</option>)}
@@ -75,18 +112,18 @@ export function RunPage() {
         <div className="mt-4 flex gap-2">
           <button
             onClick={() => start.mutate()}
-            disabled={presetId === null || running || start.isPending}
+            disabled={presetId === null || active || start.isPending}
             className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
           >
             {start.isPending ? 'Queuing…' : 'Start run'}
           </button>
-          {running && (
+          {active && (
             <button
               onClick={() => cancel.mutate()}
               disabled={cancel.isPending}
-              className="rounded-md border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-800"
+              className="rounded-md border border-red-700 bg-red-900/30 px-4 py-2 text-sm text-red-200 hover:bg-red-900/60 disabled:opacity-50"
             >
-              {cancel.isPending ? 'Cancelling…' : 'Cancel'}
+              {cancel.isPending ? 'Stopping…' : 'Stop'}
             </button>
           )}
         </div>
@@ -100,15 +137,23 @@ export function RunPage() {
               Run #{progress.runId} · <span className="text-zinc-300">{progress.status}</span>
             </h2>
             <span className="text-xs text-zinc-500">
-              {progress.daysProcessed}/{progress.totalDaysPlanned} days · chunk {progress.currentChunk}/{progress.totalChunks}
+              {progress.daysProcessed}/{progress.totalDaysPlanned} days · chunk {progress.currentChunk}/{progress.totalChunks} · {pct}%
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
             <div
-              className="h-full bg-emerald-500 transition-all"
+              className={'h-full transition-all ' + (active ? 'bg-emerald-500' : progress.status === 'failed' ? 'bg-red-500' : progress.status === 'cancelled' ? 'bg-amber-500' : 'bg-emerald-500')}
               style={{ width: `${pct}%` }}
             />
           </div>
+          {progress.fetch && active && (
+            <p className="mt-3 text-xs text-zinc-400">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400 align-middle"></span>
+              <span className="ml-2 align-middle">
+                Fetching candles · {progress.fetch.symbol} ({progress.fetch.stocksProcessed}/{progress.fetch.totalStocks} stocks)
+              </span>
+            </p>
+          )}
           {progress.error && <p className="mt-3 text-sm text-red-400">{progress.error}</p>}
           {finished && progress.summary && (
             <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
@@ -153,18 +198,88 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function NumberInput({
-  value, onChange, min, max, disabled,
-}: { value: number; onChange: (n: number) => void; min?: number; max?: number; disabled?: boolean }) {
+  value, onChange, min, max, disabled, suffix,
+}: {
+  value: number
+  onChange: (n: number) => void
+  min?: number
+  max?: number
+  disabled?: boolean
+  suffix?: string
+}) {
+  // Local text state so the user can transiently clear the field while typing
+  // without us snapping back to the parent value mid-keystroke.
+  const [text, setText] = useState(String(value))
+  useEffect(() => { setText(String(value)) }, [value])
+
+  const commit = (raw: string) => {
+    if (raw === '') {
+      const fallback = min ?? 0
+      setText(String(fallback))
+      onChange(fallback)
+      return
+    }
+    const n = Number(raw)
+    const clamped = Math.min(max ?? n, Math.max(min ?? 0, n))
+    setText(String(clamped))
+    onChange(clamped)
+  }
+
   return (
-    <input
-      type="number"
-      value={value}
-      min={min}
-      max={max}
-      disabled={disabled}
-      onChange={e => onChange(Number(e.target.value))}
-      className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-    />
+    <div className="relative">
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={text}
+        disabled={disabled}
+        onChange={e => {
+          const raw = e.target.value.replace(/\D/g, '')
+          setText(raw)
+          if (raw !== '') onChange(Number(raw))
+        }}
+        onBlur={e => commit(e.target.value.replace(/\D/g, ''))}
+        className={
+          'w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm tabular-nums focus:border-emerald-500 focus:outline-none disabled:opacity-50 ' +
+          (suffix ? 'pr-14' : '')
+        }
+      />
+      {suffix && (
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-zinc-500">
+          {suffix}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function QuickPicks({
+  options, active, onPick, disabled,
+}: {
+  options: number[]
+  active: number
+  onPick: (n: number) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="mt-1.5 flex gap-1">
+      {options.map(opt => (
+        <button
+          key={opt}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(opt)}
+          className={
+            'rounded px-2 py-0.5 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ' +
+            (active === opt
+              ? 'border border-emerald-700 bg-emerald-500/15 text-emerald-300'
+              : 'border border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-200')
+          }
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
   )
 }
 

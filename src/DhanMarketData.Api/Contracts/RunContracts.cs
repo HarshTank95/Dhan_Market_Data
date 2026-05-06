@@ -68,3 +68,13 @@ public sealed class StartRunResponse
     public int RunId { get; init; }
     public RunStatus Status { get; init; }
 }
+
+public sealed class CancelActiveResponse
+{
+    public int CancelledCount { get; init; }
+}
+
+public sealed class CleanupOrphansResponse
+{
+    public int CleanedCount { get; init; }
+}

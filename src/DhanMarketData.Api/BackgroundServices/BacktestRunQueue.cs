@@ -35,5 +35,7 @@ public sealed class BacktestRunQueue : IBacktestRunQueue
         return true;
     }
 
+    public bool HasInFlight(int runId) => _inFlight.ContainsKey(runId);
+
     internal bool TryUnregister(int runId) => _inFlight.TryRemove(runId, out _);
 }

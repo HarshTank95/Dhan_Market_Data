@@ -31,12 +31,13 @@ public class HistoricalDataCache
     }
 
     public async Task<List<Candle>> LoadOrFetchAsync(
-        string securityId, 
-        DateTime date, 
+        string securityId,
+        DateTime date,
         string timeframe = "5min",
         string exchangeSegment = "NSE_EQ",
         TimeSpan? marketOpen = null,
-        TimeSpan? marketClose = null)
+        TimeSpan? marketClose = null,
+        CancellationToken ct = default)
     {
         // Skip weekends
         if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
@@ -46,14 +47,14 @@ public class HistoricalDataCache
         var securityFolder = Path.Combine(_cacheDirectory, exchangeSegment, timeframe, securityId);
         var fileName = $"{date:yyyy-MM-dd}.json";
         var filePath = Path.Combine(securityFolder, fileName);
-        
+
         // Check in-memory cache first (much faster than File.Exists)
         var cacheKey = $"{exchangeSegment}_{timeframe}_{securityId}_{date:yyyy-MM-dd}";
         if (_memoryCache.TryGetValue(cacheKey, out var cachedCandles))
         {
             return cachedCandles;
         }
-        
+
         // Check negative cache - if we already know there's no data, skip immediately
         if (_missingDataCache.Contains(cacheKey))
         {
@@ -63,21 +64,21 @@ public class HistoricalDataCache
         // Check disk cache
         if (File.Exists(filePath))
         {
-            var json = await File.ReadAllTextAsync(filePath);
+            var json = await File.ReadAllTextAsync(filePath, ct);
             var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
-            
+
             // If empty file (marker for missing data), add to negative cache and return
             if (candles.Count == 0)
             {
                 _missingDataCache.Add(cacheKey);
                 return candles;
             }
-            
+
             // Add to memory cache with LRU eviction
             AddToMemoryCache(cacheKey, candles);
             return candles;
         }
-        
+
         Directory.CreateDirectory(securityFolder);
 
         try
@@ -98,31 +99,38 @@ public class HistoricalDataCache
                     $"Dhan API supports: 1min, 5min, 15min, 25min, 60min (1hour), 1day. " +
                     $"Note: 4hour is NOT supported by Dhan API.")
             };
-            
+
             var candles = await _apiClient.GetIntradayCandlesAsync(
-                securityId, 
-                date, 
-                interval, 
+                securityId,
+                date,
+                interval,
                 exchangeSegment,
                 marketOpen,
-                marketClose);
-            
+                marketClose,
+                ct);
+
             // If no data returned, create empty file marker to avoid retrying (even across restarts)
             if (candles.Count == 0)
             {
-                await File.WriteAllTextAsync(filePath, "[]"); // Empty JSON array
+                await File.WriteAllTextAsync(filePath, "[]", ct); // Empty JSON array
                 _missingDataCache.Add(cacheKey);
                 return new List<Candle>();
             }
-            
+
             // Cache as minified JSON (no whitespace)
             var jsonData = JsonSerializer.Serialize(candles, new JsonSerializerOptions { WriteIndented = false });
-            await File.WriteAllTextAsync(filePath, jsonData);
-            
+            await File.WriteAllTextAsync(filePath, jsonData, ct);
+
             // Add to memory cache
             AddToMemoryCache(cacheKey, candles);
-            
+
             return candles;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Don't bake a "missing data" marker for a user-cancelled fetch — the
+            // data may still exist; we just stopped before retrieving it.
+            throw;
         }
         catch (Exception ex)
         {
@@ -135,9 +143,9 @@ public class HistoricalDataCache
                     ex
                 );
             }
-            
+
             // Create empty file marker and add to negative cache to avoid retrying
-            await File.WriteAllTextAsync(filePath, "[]");
+            await File.WriteAllTextAsync(filePath, "[]", ct);
             _missingDataCache.Add(cacheKey);
             return new List<Candle>();
         }

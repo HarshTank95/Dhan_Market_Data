@@ -65,6 +65,8 @@ export const api = {
     }),
   cancelRun: (id: number) =>
     request<void>(`/api/runs/${id}`, { method: 'DELETE' }),
+  cancelAllActive: () =>
+    request<{ cancelledCount: number }>('/api/runs/cancel-active', { method: 'POST' }),
   listRuns: () => request<BacktestRunSummary[]>('/api/runs'),
   getRun: (id: number) => request<BacktestRunDetail>(`/api/runs/${id}`),
   getRunTrades: (id: number, page = 1, pageSize = 100) =>

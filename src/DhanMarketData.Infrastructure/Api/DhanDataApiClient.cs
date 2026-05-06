@@ -73,21 +73,22 @@ public class DhanDataApiClient
     }
 
     public async Task<List<Candle>> GetIntradayCandlesAsync(
-        string securityId, 
-        DateTime date, 
+        string securityId,
+        DateTime date,
         string interval = "1",
         string exchangeSegment = "NSE_EQ",
         TimeSpan? marketOpen = null,
-        TimeSpan? marketClose = null)
+        TimeSpan? marketClose = null,
+        CancellationToken ct = default)
     {
-        await ApplyRateLimitAsync();
+        await ApplyRateLimitAsync(ct);
 
         var openTime = marketOpen ?? new TimeSpan(9, 15, 0);
         var closeTime = marketClose ?? new TimeSpan(15, 30, 0);
-        
+
         var fromDate = date.Date.Add(openTime);
         var toDate = date.Date.Add(closeTime);
-        
+
         var payload = new
         {
             securityId = securityId,
@@ -102,18 +103,18 @@ public class DhanDataApiClient
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var endpoint = "v2/charts/intraday";
-        var response = await _httpClient.PostAsync(endpoint, content);
-        
+        var response = await _httpClient.PostAsync(endpoint, content, ct);
+
         if (!response.IsSuccessStatusCode)
         {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            
+            var errorContent = await response.Content.ReadAsStringAsync(ct);
+
             // DH-905: No data available for this security (delisted/suspended/no trading)
             if (errorContent.Contains("DH-905"))
             {
                 return new List<Candle>(); // Silently skip stocks with no data
             }
-            
+
             // Log other errors to file
             _errorLogger.LogError(
                 "DhanDataApiClient.GetIntradayCandlesAsync",
@@ -121,22 +122,22 @@ public class DhanDataApiClient
             );
             response.EnsureSuccessStatusCode();
         }
-        
-        var responseContent = await response.Content.ReadAsStringAsync();
+
+        var responseContent = await response.Content.ReadAsStringAsync(ct);
         var historicalData = JsonSerializer.Deserialize<DhanHistoricalResponse>(responseContent);
-        
+
         return historicalData?.ToCandles() ?? new List<Candle>();
     }
 
-    private async Task ApplyRateLimitAsync()
+    private async Task ApplyRateLimitAsync(CancellationToken ct = default)
     {
-        await _rateLimiter.WaitAsync();
+        await _rateLimiter.WaitAsync(ct);
         try
         {
             var timeSinceLastCall = (DateTime.UtcNow - _lastApiCall).TotalMilliseconds;
             if (timeSinceLastCall < MinDelayMs)
             {
-                await Task.Delay(MinDelayMs - (int)timeSinceLastCall);
+                await Task.Delay(MinDelayMs - (int)timeSinceLastCall, ct);
             }
             _lastApiCall = DateTime.UtcNow;
         }

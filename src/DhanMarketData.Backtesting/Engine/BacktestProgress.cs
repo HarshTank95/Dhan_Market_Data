@@ -9,6 +9,7 @@ namespace DhanMarketData.Backtest;
 public enum BacktestEventKind
 {
     Started,
+    FetchProgress,
     ChunkProgress,
     TradeRecorded,
     Finished,
@@ -21,4 +22,11 @@ public sealed record BacktestProgress(
     int CurrentChunk,
     int TotalChunks,
     Trade? Trade,
-    DateTime? Day);
+    DateTime? Day)
+{
+    // Extra fields for FetchProgress events. Init-only so existing positional
+    // `new BacktestProgress(...)` calls compile unchanged.
+    public int StocksProcessed { get; init; }
+    public int TotalStocks { get; init; }
+    public string? CurrentSymbol { get; init; }
+}

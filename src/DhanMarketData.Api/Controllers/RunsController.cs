@@ -82,21 +82,109 @@ public sealed class RunsController : ControllerBase
         if (run.Status is RunStatus.Completed or RunStatus.Failed or RunStatus.Cancelled)
             return NoContent(); // idempotent
 
-        // Mark intent; the runner will flip to Cancelled when it observes the token.
-        if (run.Status == RunStatus.Running)
-        {
-            run.Status = RunStatus.Cancelling;
-            await _runs.UpdateAsync(run, ct);
-        }
-        else if (run.Status == RunStatus.Queued)
+        // If TryCancel returns false there is no in-flight token to signal — the row
+        // is an orphan from a previous process, OR it's already past completion in
+        // memory but DB hasn't caught up. Either way we can't expect the runner to
+        // observe the cancel, so force a terminal state instead of leaving Cancelling.
+        var tokenSignaled = _queue.TryCancel(id);
+
+        if (run.Status == RunStatus.Queued)
         {
             run.Status = RunStatus.Cancelled;
             run.FinishedAt = DateTime.UtcNow;
             await _runs.UpdateAsync(run, ct);
         }
+        else if (run.Status is RunStatus.Running or RunStatus.Cancelling)
+        {
+            if (tokenSignaled)
+            {
+                run.Status = RunStatus.Cancelling; // runner will flip to Cancelled
+                await _runs.UpdateAsync(run, ct);
+            }
+            else
+            {
+                run.Status = RunStatus.Cancelled;
+                run.FinishedAt = DateTime.UtcNow;
+                run.ErrorMessage ??= "Cancelled (no in-flight runner — orphan).";
+                await _runs.UpdateAsync(run, ct);
+            }
+        }
 
-        _queue.TryCancel(id);
         return NoContent();
+    }
+
+    // Force-finalize orphan rows (Queued/Running/Cancelling that the runner has
+    // no in-flight token for). Intended for manual cleanup after weird states —
+    // same logic the startup orphan reset runs, but on demand.
+    [HttpPost("cleanup-orphans")]
+    public async Task<ActionResult<CleanupOrphansResponse>> CleanupOrphans(CancellationToken ct)
+    {
+        var queued = await _runs.ListAsync(RunStatus.Queued, 500, 0, ct);
+        var running = await _runs.ListAsync(RunStatus.Running, 500, 0, ct);
+        var cancelling = await _runs.ListAsync(RunStatus.Cancelling, 500, 0, ct);
+
+        var now = DateTime.UtcNow;
+        var cleaned = 0;
+
+        foreach (var run in queued.Concat(running).Concat(cancelling))
+        {
+            // If the runner is actually working this row, leave it alone — it's
+            // not an orphan, just an in-progress cancel.
+            if (_queue.HasInFlight(run.Id)) continue;
+
+            run.Status = RunStatus.Cancelled;
+            run.FinishedAt = now;
+            run.ErrorMessage ??= "Force-cleaned (no in-flight runner).";
+            await _runs.UpdateAsync(run, ct);
+            cleaned++;
+        }
+
+        return Ok(new CleanupOrphansResponse { CleanedCount = cleaned });
+    }
+
+    // Bulk cancel: stops every Queued/Running/Cancelling run in one round-trip.
+    // Same per-row logic as DELETE /api/runs/{id}.
+    [HttpPost("cancel-active")]
+    public async Task<ActionResult<CancelActiveResponse>> CancelActive(CancellationToken ct)
+    {
+        var queued = await _runs.ListAsync(RunStatus.Queued, 200, 0, ct);
+        var running = await _runs.ListAsync(RunStatus.Running, 200, 0, ct);
+        var cancelling = await _runs.ListAsync(RunStatus.Cancelling, 200, 0, ct);
+
+        var now = DateTime.UtcNow;
+        var cancelledCount = 0;
+
+        foreach (var run in queued)
+        {
+            run.Status = RunStatus.Cancelled;
+            run.FinishedAt = now;
+            await _runs.UpdateAsync(run, ct);
+            _queue.TryCancel(run.Id);
+            cancelledCount++;
+        }
+
+        foreach (var run in running.Concat(cancelling))
+        {
+            var tokenSignaled = _queue.TryCancel(run.Id);
+            if (tokenSignaled)
+            {
+                if (run.Status != RunStatus.Cancelling)
+                {
+                    run.Status = RunStatus.Cancelling;
+                    await _runs.UpdateAsync(run, ct);
+                }
+            }
+            else
+            {
+                run.Status = RunStatus.Cancelled;
+                run.FinishedAt = now;
+                run.ErrorMessage ??= "Cancelled (no in-flight runner — orphan).";
+                await _runs.UpdateAsync(run, ct);
+            }
+            cancelledCount++;
+        }
+
+        return Ok(new CancelActiveResponse { CancelledCount = cancelledCount });
     }
 
     [HttpGet]

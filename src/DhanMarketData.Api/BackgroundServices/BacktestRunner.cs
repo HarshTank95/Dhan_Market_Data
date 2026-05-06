@@ -118,6 +118,15 @@ public sealed class BacktestRunner : BackgroundService
                         await _hub.RunStarted(runId, ev.TotalDaysPlanned, hostStoppingToken);
                         break;
 
+                    case BacktestEventKind.FetchProgress:
+                        // No DB write — purely a SignalR ping for live UI feedback.
+                        await _hub.FetchProgress(
+                            runId,
+                            ev.StocksProcessed, ev.TotalStocks, ev.CurrentSymbol ?? "",
+                            ev.CurrentChunk, ev.TotalChunks,
+                            hostStoppingToken);
+                        break;
+
                     case BacktestEventKind.ChunkProgress:
                         run.TotalDaysProcessed = ev.DaysProcessed;
                         await db.SaveChangesAsync(hostStoppingToken);

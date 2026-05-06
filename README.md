@@ -21,10 +21,11 @@ cd ui && npm install && npm run dev
 
 Then open `http://localhost:5173` in a browser.
 
-First-time setup: open the **Credentials** tab, paste your Dhan client ID + access token (encrypted at rest via Windows DPAPI), then drive a backtest from the **Run** tab.
+First-time setup: open the **Credentials** tab, paste your Dhan client ID + access token (encrypted at rest via Windows DPAPI), then drive a backtest from the **Run** tab. Active backtests show up in the **Queue** tab where you can stop a single run or cancel everything at once.
 
 ## Documentation
 
+- `docs/commands.md` — every build/run/EF/cleanup command in one place
 - `docs/architecture.md` — solution layout, dependency graph, where things live
 - `docs/strategies.md` — the 4 built-in strategies, their actual screening rules, configs
 - `docs/data-fetching.md` — caching, supported timeframes, Dhan API constraints

@@ -107,7 +107,10 @@ public class BacktestOrchestrator
             var chunkAllDays = allTradingDays.Skip(chunkStart).Take(currentChunkSize + 10).ToList();
 
             // Fetch data for this chunk only
-            var stockData = await FetchHistoricalDataAsync(stocks, chunkAllDays, cancellationToken);
+            var stockData = await FetchHistoricalDataAsync(
+                stocks, chunkAllDays,
+                progress, daysProcessed, days, chunkNumber, totalChunks,
+                cancellationToken);
             Console.WriteLine("\nData fetching complete for chunk.\n");
 
             // Run backtest for this chunk
@@ -172,12 +175,14 @@ public class BacktestOrchestrator
             {
                 foreach (var day in tradingDays)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     // This will fetch from API if not cached, then cache it
                     await _cache.LoadOrFetchAsync(
                         stock.SecurityId,
                         day,
                         _config.Timeframe,
-                        _config.ExchangeSegment);
+                        _config.ExchangeSegment,
+                        ct: cancellationToken);
                 }
                 successCount++;
             }
@@ -196,6 +201,11 @@ public class BacktestOrchestrator
     private async Task<Dictionary<string, Dictionary<DateTime, List<Candle>>>> FetchHistoricalDataAsync(
         List<Instrument> stocks,
         List<DateTime> tradingDays,
+        IProgress<BacktestProgress>? progress = null,
+        int daysProcessed = 0,
+        int totalDaysPlanned = 0,
+        int currentChunk = 0,
+        int totalChunks = 0,
         CancellationToken cancellationToken = default)
     {
         Console.WriteLine("Fetching historical data...");
@@ -209,13 +219,15 @@ public class BacktestOrchestrator
 
             foreach (var day in tradingDays)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var candles = await _cache.LoadOrFetchAsync(
                     stock.SecurityId,
                     day,
                     _config.Timeframe,
                     _config.ExchangeSegment,
                     _tradingConfig.MarketOpenTime,
-                    _tradingConfig.MarketCloseTime);
+                    _tradingConfig.MarketCloseTime,
+                    cancellationToken);
                 if (candles.Count > 0)
                 {
                     stockData[stock.SecurityId][day] = candles;
@@ -223,6 +235,20 @@ public class BacktestOrchestrator
             }
 
             Console.Write($"\rProcessed {i + 1}/{stocks.Count} stocks");
+
+            progress?.Report(new BacktestProgress(
+                BacktestEventKind.FetchProgress,
+                TotalDaysPlanned: totalDaysPlanned,
+                DaysProcessed: daysProcessed,
+                CurrentChunk: currentChunk,
+                TotalChunks: totalChunks,
+                Trade: null,
+                Day: null)
+            {
+                StocksProcessed = i + 1,
+                TotalStocks = stocks.Count,
+                CurrentSymbol = stock.TradingSymbol,
+            });
         }
 
         return stockData;

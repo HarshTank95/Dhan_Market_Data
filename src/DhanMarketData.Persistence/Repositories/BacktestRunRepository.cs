@@ -45,18 +45,21 @@ public sealed class BacktestRunRepository : IBacktestRunRepository
         return _db.SaveChangesAsync(ct);
     }
 
-    // Called on API startup — runs left in Running/Cancelling state from a previous
-    // process crash get marked Failed so they don't appear active forever.
+    // Called on API startup — runs left in Queued/Running/Cancelling state are
+    // orphans of a previous process: the in-memory channel is gone, so the runner
+    // will never pick them up. Mark them Failed so they don't appear active forever.
     public async Task<int> ResetOrphanedRunsAsync(CancellationToken ct = default)
     {
         var orphans = await _db.BacktestRuns
-            .Where(r => r.Status == RunStatus.Running || r.Status == RunStatus.Cancelling)
+            .Where(r => r.Status == RunStatus.Queued
+                     || r.Status == RunStatus.Running
+                     || r.Status == RunStatus.Cancelling)
             .ToListAsync(ct);
 
         foreach (var run in orphans)
         {
             run.Status = RunStatus.Failed;
-            run.ErrorMessage = "Server restarted during run.";
+            run.ErrorMessage = "Server restarted before run could complete.";
             run.FinishedAt = DateTime.UtcNow;
         }
 

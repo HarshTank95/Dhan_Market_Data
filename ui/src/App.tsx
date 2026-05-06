@@ -1,15 +1,17 @@
 import { useState } from 'react'
 
 import { CredentialsPage } from './pages/CredentialsPage'
+import { QueuePage } from './pages/QueuePage'
 import { ResultsPage } from './pages/ResultsPage'
 import { RunPage } from './pages/RunPage'
 import { StrategiesPage } from './pages/StrategiesPage'
 
-type Tab = 'strategies' | 'run' | 'results' | 'credentials'
+type Tab = 'strategies' | 'run' | 'queue' | 'results' | 'credentials'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'strategies', label: 'Strategies' },
   { key: 'run', label: 'Run' },
+  { key: 'queue', label: 'Queue' },
   { key: 'results', label: 'Results' },
   { key: 'credentials', label: 'Credentials' },
 ]
@@ -46,6 +48,7 @@ export default function App() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-6">
         {tab === 'strategies' && <StrategiesPage />}
         {tab === 'run' && <RunPage />}
+        {tab === 'queue' && <QueuePage />}
         {tab === 'results' && <ResultsPage />}
         {tab === 'credentials' && <CredentialsPage />}
       </main>

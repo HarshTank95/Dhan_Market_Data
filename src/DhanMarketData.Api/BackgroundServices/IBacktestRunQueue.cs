@@ -8,4 +8,5 @@ public interface IBacktestRunQueue
     ChannelReader<RunRequest> Reader { get; }
     bool TryRegisterCancellation(int runId, CancellationTokenSource cts);
     bool TryCancel(int runId);
+    bool HasInFlight(int runId);
 }

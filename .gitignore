@@ -69,3 +69,6 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
+
+# Runtime error log written by ErrorLogger (Infrastructure/Logging)
+error_log.txt
