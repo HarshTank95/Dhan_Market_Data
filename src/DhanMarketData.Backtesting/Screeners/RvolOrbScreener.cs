@@ -234,7 +234,13 @@ public class RvolOrbScreener : IScreener
     /// <summary>
     /// Same-slot volume baseline for RVOL: for each prior trading day in
     /// the history, sum the volume of candles that fall in the first
-    /// `orMinutes` of that day. Returns the last `days` such values.
+    /// `orMinutes` of that day. Returns the most-recent `days` such values.
+    ///
+    /// Sort groups by date DESCENDING before taking N — earlier versions
+    /// used `OrderByDescending(_ => 0)` which is a no-op (sorting by a
+    /// constant key) and meant Take(N) was pulling the oldest N days of
+    /// the history window instead of the newest. That biased RVOL against
+    /// a stale baseline.
     /// </summary>
     private static List<double> ComputeSameSlotVolumes(
         List<Candle> intraday,
@@ -245,6 +251,8 @@ public class RvolOrbScreener : IScreener
         return intraday
             .Where(c => c.Timestamp.Date < currentDay)
             .GroupBy(c => c.Timestamp.Date)
+            .OrderByDescending(g => g.Key)   // most recent trading days first
+            .Take(days)
             .Select(g =>
             {
                 var ordered = g.OrderBy(c => c.Timestamp).ToList();
@@ -254,8 +262,6 @@ public class RvolOrbScreener : IScreener
                 return ordered.Where(c => c.Timestamp < cutoff).Sum(c => (double)c.Volume);
             })
             .Where(v => v > 0)
-            .OrderByDescending(_ => 0) // preserve recency
-            .Take(days)
             .ToList();
     }
 }
