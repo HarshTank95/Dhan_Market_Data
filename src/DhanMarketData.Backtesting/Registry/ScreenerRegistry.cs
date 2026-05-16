@@ -30,6 +30,9 @@ public sealed class ScreenerRegistry : IScreenerRegistry
             BuildEntry("gapfade", "Gap Fade (Long)",
                 "Quiet, ATR-normalized gap-downs on liquid trending stocks — research-grade mean-reversion candidates.",
                 typeof(GapFadeConfig)),
+            BuildEntry("rvolorb", "Volume Confluence Breakout",
+                "F&O-eligible 15-min ORB filtered by cash RVOL and confirmed by futures Open Interest direction (long-only v1).",
+                typeof(RvolOrbConfig)),
         };
 
         _byKey = _entries.ToDictionary(e => e.Key, StringComparer.OrdinalIgnoreCase);

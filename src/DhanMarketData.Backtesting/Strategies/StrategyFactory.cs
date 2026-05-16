@@ -21,6 +21,7 @@ public static class StrategyFactory
         var openingRangeConfig = configuration.GetSection("Screeners:OpeningRange").Get<OpeningRangeConfig>() ?? new OpeningRangeConfig();
         var gapFadeConfig = configuration.GetSection("Screeners:GapFade").Get<GapFadeConfig>() ?? new GapFadeConfig();
         var gapFadeStrategyConfig = configuration.GetSection("Strategies:GapFadeLong").Get<GapFadeStrategyConfig>() ?? new GapFadeStrategyConfig();
+        var confluenceOrbStrategyConfig = configuration.GetSection("Strategies:ConfluenceOrbLong").Get<ConfluenceOrbStrategyConfig>() ?? new ConfluenceOrbStrategyConfig();
 
         return strategyType.ToLower() switch
         {
@@ -29,6 +30,7 @@ public static class StrategyFactory
             "trailingstop" => new TrailingStopStrategy(tradingConfig, dominanceConfig),
             "openingrange" => new OpeningRangeBreakoutStrategy(tradingConfig, openingRangeConfig),
             "gapfadelong" => new GapFadeLongStrategy(tradingConfig, gapFadeConfig, gapFadeStrategyConfig),
+            "confluenceorblong" => new ConfluenceOrbLongStrategy(tradingConfig, confluenceOrbStrategyConfig),
             _ => throw new ArgumentException($"Unknown strategy type: {strategyType}. Available: {string.Join(", ", GetAvailableStrategies())}")
         };
     }
@@ -41,7 +43,8 @@ public static class StrategyFactory
             "breakoutentry",
             "trailingstop",
             "openingrange",
-            "gapfadelong"
+            "gapfadelong",
+            "confluenceorblong"
         };
     }
 
@@ -53,7 +56,8 @@ public static class StrategyFactory
             { "breakoutentry", "Entry on dominance candle breakout with immediate confirmation" },
             { "trailingstop", "Trail SL by fixed steps, no target - ride the trend" },
             { "openingrange", "Opening range breakout entry (9:25-9:45), SL at OR low, fixed target" },
-            { "gapfadelong", "Gap fade long: confirmation entry inside a configurable window, RR target via TradingConfig" }
+            { "gapfadelong", "Gap fade long: confirmation entry inside a configurable window, RR target via TradingConfig" },
+            { "confluenceorblong", "Volume Confluence Breakout Long: stop-market at OR.High, ATR×0.15 stop, no target, time exit 14:30" }
         };
     }
 }

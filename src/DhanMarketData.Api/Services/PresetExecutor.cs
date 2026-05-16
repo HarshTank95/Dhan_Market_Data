@@ -86,6 +86,7 @@ public sealed class PresetExecutor : IPresetExecutor
             "dominancecandle" => "DominanceCandle",
             "openingrange" => "OpeningRange",
             "gapfade" => "GapFade",
+            "rvolorb" => "RvolOrb",
             _ => throw new ArgumentException($"Unknown screener type: {preset.ScreenerType}"),
         };
 
@@ -100,6 +101,7 @@ public sealed class PresetExecutor : IPresetExecutor
         var strategySectionKey = preset.StrategyType.ToLowerInvariant() switch
         {
             "gapfadelong" => "GapFadeLong",
+            "confluenceorblong" => "ConfluenceOrbLong",
             _ => null,
         };
         if (strategySectionKey is not null && !string.IsNullOrWhiteSpace(preset.StrategyConfigJson))

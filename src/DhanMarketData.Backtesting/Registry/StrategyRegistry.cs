@@ -55,6 +55,14 @@ public sealed class StrategyRegistry : IStrategyRegistry
                 ConfigClassName = nameof(GapFadeStrategyConfig),
                 Fields = ConfigSchemaReflector.ExtractFields(typeof(GapFadeStrategyConfig)),
             },
+            new RegistryEntry
+            {
+                Key = "confluenceorblong",
+                DisplayName = "Volume Confluence Breakout (Long)",
+                Description = "Stop-market at OR.High after 09:30, ATR×0.15 stop, no profit target, time exit 14:30. Day-of-week sizing tilt; size scaled by screener confluence weight (1.0 long buildup / 0.5 short covering).",
+                ConfigClassName = nameof(ConfluenceOrbStrategyConfig),
+                Fields = ConfigSchemaReflector.ExtractFields(typeof(ConfluenceOrbStrategyConfig)),
+            },
         };
 
         _byKey = _entries.ToDictionary(e => e.Key, StringComparer.OrdinalIgnoreCase);
