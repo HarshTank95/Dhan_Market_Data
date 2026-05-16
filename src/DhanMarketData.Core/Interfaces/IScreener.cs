@@ -29,7 +29,8 @@ public sealed record ScreenerContext(
 /// </summary>
 public sealed record ScreenerSignal(
     List<Candle> Candles,
-    decimal SizingMultiplier = 1.0m);
+    decimal SizingMultiplier = 1.0m,
+    decimal Atr = 0m);
 
 /// <summary>
 /// Interface for all screeners. Implement this to create a new screener.
