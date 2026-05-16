@@ -5,7 +5,18 @@ namespace DhanMarketData.Infrastructure.Data;
 public class InstrumentService
 {
     private const string FileName = "instruments.csv";
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromHours(24);
+
+    private readonly ScripMasterDownloader? _downloader;
     private List<Instrument> _instruments = new();
+
+    // Parameterless ctor preserved for legacy call sites / tests.
+    public InstrumentService() : this(null) { }
+
+    public InstrumentService(ScripMasterDownloader? downloader)
+    {
+        _downloader = downloader;
+    }
 
     public List<Instrument> LoadFromCsv()
     {
@@ -41,9 +52,15 @@ public class InstrumentService
         return _instruments;
     }
 
-    public async Task LoadInstrumentsAsync()
+    public async Task LoadInstrumentsAsync(CancellationToken ct = default)
     {
-        await Task.Run(() => LoadFromCsv());
+        // Refresh-if-stale before parse. Downloader handles its own failure
+        // mode (falls back to existing stale file with a warning).
+        if (_downloader is not null)
+        {
+            await _downloader.RefreshIfStaleAsync(RefreshInterval, ct);
+        }
+        await Task.Run(() => LoadFromCsv(), ct);
     }
 
     public List<Instrument> GetInstrumentsBySegment(string exchangeSegment, int limit) => _instruments
