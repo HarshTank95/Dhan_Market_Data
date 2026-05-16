@@ -107,7 +107,7 @@ public class HistoricalDataCache
                 exchangeSegment,
                 marketOpen,
                 marketClose,
-                ct);
+                ct: ct);
 
             // If no data returned, create empty file marker to avoid retrying (even across restarts)
             if (candles.Count == 0)
@@ -255,6 +255,128 @@ public class HistoricalDataCache
             }
             await File.WriteAllTextAsync(filePath, "[]", ct);
             _missingDataCache.Add(memoryKey);
+            return new List<Candle>();
+        }
+    }
+
+    /// <summary>
+    /// Fetch intraday F&O candles WITH Open Interest. Uses a separate cache
+    /// namespace (NSE_FNO_OI/) from regular F&O fetches so existing
+    /// OHLCV-only cached files aren't returned for OI-requesting callers.
+    ///
+    /// One file per stock per day, same layout as LoadOrFetchAsync. The
+    /// API call sends instrument="FUTSTK" + oi=true so the response
+    /// includes the parallel `open_interest` array that
+    /// DhanHistoricalResponse.ToCandles maps onto Candle.OpenInterest.
+    /// </summary>
+    public async Task<List<Candle>> LoadOrFetchFutWithOiAsync(
+        string securityId,
+        DateTime date,
+        string timeframe = "15min",
+        string exchangeSegment = "NSE_FNO",
+        TimeSpan? marketOpen = null,
+        TimeSpan? marketClose = null,
+        CancellationToken ct = default)
+    {
+        // Skip weekends — same as the equity path.
+        if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
+            return new List<Candle>();
+
+        // Distinct cache namespace so OI-bearing files don't collide with the
+        // legacy OHLCV-only NSE_FNO folder if someone ever populates one.
+        const string cacheNamespace = "NSE_FNO_OI";
+        var securityFolder = Path.Combine(_cacheDirectory, cacheNamespace, timeframe, securityId);
+        var fileName = $"{date:yyyy-MM-dd}.json";
+        var filePath = Path.Combine(securityFolder, fileName);
+
+        var cacheKey = $"{cacheNamespace}_{timeframe}_{securityId}_{date:yyyy-MM-dd}";
+
+        if (_memoryCache.TryGetValue(cacheKey, out var cachedCandles))
+        {
+            return cachedCandles;
+        }
+
+        if (_missingDataCache.Contains(cacheKey))
+        {
+            return new List<Candle>();
+        }
+
+        if (File.Exists(filePath))
+        {
+            var json = await File.ReadAllTextAsync(filePath, ct);
+            var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
+
+            if (candles.Count == 0)
+            {
+                _missingDataCache.Add(cacheKey);
+                return candles;
+            }
+
+            AddToMemoryCache(cacheKey, candles);
+            return candles;
+        }
+
+        Directory.CreateDirectory(securityFolder);
+
+        try
+        {
+            string interval = timeframe switch
+            {
+                "1min" => "1",
+                "5min" => "5",
+                "15min" => "15",
+                "25min" => "25",
+                "60min" => "60",
+                "1hour" => "60",
+                _ => throw new ArgumentException(
+                    $"Unsupported timeframe '{timeframe}' for F&O OI fetch. " +
+                    $"Dhan supports: 1min, 5min, 15min, 25min, 60min (1hour). " +
+                    $"Note: daily ('1day') uses LoadOrFetchDailyRangeAsync instead.")
+            };
+
+            var candles = await _apiClient.GetIntradayCandlesAsync(
+                securityId,
+                date,
+                interval,
+                exchangeSegment,
+                marketOpen,
+                marketClose,
+                instrument: "FUTSTK",
+                oi: true,
+                ct: ct);
+
+            if (candles.Count == 0)
+            {
+                await File.WriteAllTextAsync(filePath, "[]", ct);
+                _missingDataCache.Add(cacheKey);
+                return new List<Candle>();
+            }
+
+            var jsonData = JsonSerializer.Serialize(candles, new JsonSerializerOptions { WriteIndented = false });
+            await File.WriteAllTextAsync(filePath, jsonData, ct);
+
+            AddToMemoryCache(cacheKey, candles);
+
+            return candles;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Don't bake a missing-data marker for a user-cancelled fetch.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (!ex.Message.Contains("status code"))
+            {
+                _errorLogger.LogError(
+                    "HistoricalDataCache.LoadOrFetchFutWithOiAsync",
+                    $"Error fetching FUT+OI data for security {securityId} on {date:yyyy-MM-dd}",
+                    ex
+                );
+            }
+
+            await File.WriteAllTextAsync(filePath, "[]", ct);
+            _missingDataCache.Add(cacheKey);
             return new List<Candle>();
         }
     }

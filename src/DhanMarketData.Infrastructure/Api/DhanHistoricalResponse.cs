@@ -14,7 +14,13 @@ public class DhanHistoricalResponse
     public List<decimal>? low { get; set; }
     public List<decimal>? close { get; set; }
     public List<decimal>? volume { get; set; }
-    
+
+    // Returned only when the request includes oi=true on an F&O contract.
+    // Schema field name in Dhan v2 responses is exactly "open_interest".
+    [JsonPropertyName("open_interest")]
+    [JsonConverter(typeof(DecimalToLongListConverter))]
+    public List<long>? open_interest { get; set; }
+
     [JsonConverter(typeof(DecimalToLongListConverter))]
     public List<long>? timestamp { get; set; }
 
@@ -34,7 +40,10 @@ public class DhanHistoricalResponse
                 High = high?[i] ?? open[i],
                 Low = low?[i] ?? open[i],
                 Close = close?[i] ?? open[i],
-                Volume = (long)(volume?[i] ?? 0)
+                Volume = (long)(volume?[i] ?? 0),
+                OpenInterest = (open_interest != null && i < open_interest.Count)
+                    ? open_interest[i]
+                    : (long?)null,
             });
         }
 

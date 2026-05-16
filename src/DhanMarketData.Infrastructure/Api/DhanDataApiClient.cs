@@ -132,6 +132,8 @@ public class DhanDataApiClient
         string exchangeSegment = "NSE_EQ",
         TimeSpan? marketOpen = null,
         TimeSpan? marketClose = null,
+        string instrument = "EQUITY",
+        bool oi = false,
         CancellationToken ct = default)
     {
         await ApplyRateLimitAsync(ct);
@@ -146,12 +148,19 @@ public class DhanDataApiClient
         // (per https://dhanhq.co/docs/v2/historical-data/). Sending date-only
         // returns DH-905 "Input_Exception". The daily endpoint is the opposite:
         // it wants date-only — see GetDailyHistoricalAsync above.
+        //
+        // instrument: "EQUITY" for cash, "FUTSTK" for stock futures, "INDEX"
+        //   for IDX_I segment (Nifty / VIX). Defaults to EQUITY for the
+        //   common case.
+        // oi: when true, response includes parallel `open_interest` array.
+        //   Only valid for F&O instruments; cash and indices return null OI.
         var payload = new
         {
             securityId = securityId,
             exchangeSegment = exchangeSegment,
-            instrument = "EQUITY",
+            instrument = instrument,
             interval = interval,
+            oi = oi,
             fromDate = fromDate.ToString("yyyy-MM-dd HH:mm:ss"),
             toDate = toDate.ToString("yyyy-MM-dd HH:mm:ss")
         };
