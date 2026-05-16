@@ -153,7 +153,18 @@ export function useBacktestProgress(runId: number | null): RunProgress | null {
     conn.start()
       .then(() => conn.invoke('JoinRun', runId))
       .then(() => hydrate())
-      .catch(err => setState(s => s && { ...s, status: 'failed', error: String(err) }))
+      .catch(err => {
+        // Cleanup has already run for this effect (unmount, StrictMode double-invoke,
+        // or tab switch). The new mount's connection is the live one — don't poison
+        // its state with this stale rejection.
+        if (cancelled) return
+        const message = String(err?.message ?? err)
+        // "The connection was stopped during negotiation" is the standard rejection
+        // when stop() interrupts an in-flight start(). It's a benign side effect of
+        // navigation, not a real failure.
+        if (message.toLowerCase().includes('stopped during negotiation')) return
+        setState(s => s && { ...s, status: 'failed', error: message })
+      })
 
     return () => {
       cancelled = true

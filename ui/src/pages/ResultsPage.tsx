@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
+import { formatIstTime } from '../lib/datetime'
 
 export function ResultsPage() {
   const runs = useQuery({ queryKey: ['runs'], queryFn: api.listRuns, refetchInterval: 5000 })
@@ -69,6 +70,7 @@ export function ResultsPage() {
                 <thead className="sticky top-0 bg-zinc-900 text-left text-zinc-500">
                   <tr>
                     <th className="p-2">Date</th><th className="p-2">Symbol</th>
+                    <th className="p-2">Time</th>
                     <th className="p-2">Entry</th><th className="p-2">Exit</th>
                     <th className="p-2">Reason</th><th className="p-2 text-right">P&L</th>
                   </tr>
@@ -78,6 +80,7 @@ export function ResultsPage() {
                     <tr key={t.id} className="border-t border-zinc-800">
                       <td className="p-2">{t.date.slice(0, 10)}</td>
                       <td className="p-2">{t.symbol}</td>
+                      <td className="p-2 tabular-nums text-zinc-400">{formatIstTime(t.entryTime)}</td>
                       <td className="p-2">₹{t.entryPrice.toFixed(2)}</td>
                       <td className="p-2">₹{t.exitPrice.toFixed(2)}</td>
                       <td className="p-2 text-zinc-400">{t.exitReason}</td>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
+import { parseUtc } from '../lib/datetime'
 
 export function CredentialsPage() {
   const qc = useQueryClient()
@@ -31,7 +32,7 @@ export function CredentialsPage() {
               : <span className="text-zinc-500">not set</span>}
             </div>
             {status.data.updatedAt && (
-              <div className="text-xs text-zinc-500">Last updated: {new Date(status.data.updatedAt).toLocaleString()}</div>
+              <div className="text-xs text-zinc-500">Last updated: {parseUtc(status.data.updatedAt).toLocaleString()}</div>
             )}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
+import { parseUtc } from '../lib/datetime'
 
 // Server returns RunStatus as a number; keep string fallback in case it ever flips.
 type ServerStatus = number | string
@@ -29,7 +30,7 @@ function statusLabel(s: ServerStatus): string {
 
 function relativeTime(iso: string | null): string {
   if (!iso) return '—'
-  const ms = Date.now() - new Date(iso).getTime()
+  const ms = Date.now() - parseUtc(iso).getTime()
   if (ms < 0 || ms < 1000) return 'just now'
   const sec = Math.floor(ms / 1000)
   if (sec < 60) return `${sec}s ago`
