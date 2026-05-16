@@ -40,4 +40,22 @@ public interface IStrategy
         List<Candle> candles,
         List<Candle> signalCandles,
         Candle entryCandle);
+
+    /// <summary>
+    /// Multiplier-aware overload (Phase 9C). The engine calls this with
+    /// the sizing weight from the screener. Default implementation
+    /// ignores the multiplier and delegates to the legacy ExecuteTrade,
+    /// so existing strategies keep working byte-identically. Override
+    /// only when the strategy actually consumes the multiplier (e.g.
+    /// the RVOL+ORB+OI long strategy scales quantity by it).
+    /// </summary>
+    Trade? ExecuteTrade(
+        string symbol,
+        string securityId,
+        DateTime date,
+        List<Candle> candles,
+        List<Candle> signalCandles,
+        Candle entryCandle,
+        decimal sizingMultiplier)
+        => ExecuteTrade(symbol, securityId, date, candles, signalCandles, entryCandle);
 }

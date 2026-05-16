@@ -12,6 +12,23 @@ public sealed record ScreenerContext(
     List<Candle>? Daily = null);
 
 /// <summary>
+/// What a screener returns when it picks a stock for today.
+///
+/// <see cref="Candles"/> is the same list every screener has always
+/// returned (typically 1-2 candles the strategy uses as SL anchors or
+/// OR boundaries).
+///
+/// <see cref="SizingMultiplier"/> lets the screener tell the strategy
+/// "size this trade differently than the standard 1.0x" — used by the
+/// RVOL+ORB+OI screener to apply half-size on short-covering /
+/// long-unwinding confluence cells. Defaults to 1.0 so legacy
+/// screeners produce byte-identical behavior.
+/// </summary>
+public sealed record ScreenerSignal(
+    List<Candle> Candles,
+    decimal SizingMultiplier = 1.0m);
+
+/// <summary>
 /// Interface for all screeners. Implement this to create a new screener.
 ///
 /// How to create a new screener:
@@ -61,4 +78,19 @@ public interface IScreener
     /// </summary>
     bool MeetsConditions(ScreenerContext context, out List<Candle> signalCandles)
         => MeetsConditions(context.Intraday, out signalCandles);
+
+    /// <summary>
+    /// Signal-returning overload (Phase 9C). The engine calls this in
+    /// preference to <see cref="MeetsConditions(ScreenerContext, out List{Candle})"/>;
+    /// the default implementation wraps that method's result with
+    /// SizingMultiplier=1.0, so screeners that don't need variable sizing
+    /// keep working byte-identically. Override only when the screener
+    /// computes a non-1.0 sizing weight (e.g. confluence-based screeners).
+    /// </summary>
+    bool MeetsSignal(ScreenerContext context, out ScreenerSignal signal)
+    {
+        var ok = MeetsConditions(context, out var candles);
+        signal = new ScreenerSignal(candles ?? new List<Candle>(), 1.0m);
+        return ok;
+    }
 }

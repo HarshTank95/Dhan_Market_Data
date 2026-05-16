@@ -42,7 +42,12 @@ public class BacktestEngine
         List<Candle>? dailyCandles)
     {
         var context = new ScreenerContext(candles, dailyCandles);
-        if (!_screener.MeetsConditions(context, out var signalCandles))
+
+        // Phase 9C: call MeetsSignal so screeners that compute a sizing
+        // multiplier can pass it through. Legacy screeners inherit the
+        // default impl that wraps MeetsConditions with multiplier=1.0
+        // — byte-identical behavior preserved.
+        if (!_screener.MeetsSignal(context, out var signal))
             return null;
 
         // Convert IST config times to UTC for comparison
@@ -53,8 +58,12 @@ public class BacktestEngine
         if (entryCandle == null)
             return null;
 
-        // Delegate trade execution to the strategy
-        return _strategy.ExecuteTrade(symbol, securityId, date, candles, signalCandles, entryCandle);
+        // Delegate to the multiplier-aware overload. Legacy strategies
+        // inherit the default impl that ignores the multiplier — again
+        // byte-identical for unchanged code paths.
+        return _strategy.ExecuteTrade(
+            symbol, securityId, date, candles,
+            signal.Candles, entryCandle, signal.SizingMultiplier);
     }
 
     public void PrintSummary(List<Trade> trades)
