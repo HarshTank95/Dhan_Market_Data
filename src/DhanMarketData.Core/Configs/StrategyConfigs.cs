@@ -36,3 +36,54 @@ public class GapFadeStrategyConfig
                  Group = "Exit", Kind = ConfigFieldKind.TimeOfDay, Order = 0)]
     public TimeSpan TimeExit { get; set; } = new TimeSpan(12, 30, 0);
 }
+
+/// <summary>
+/// Confluence ORB Long Strategy configuration.
+/// Stop-market arm at OR.High after the 09:30 OR closes, valid till
+/// NoFillCutoff. ATR-multiple stop, no profit target. Time exit at 14:30
+/// IST. Day-of-week sizing tilt per IntradayLab's 8-year Nifty backtest
+/// (Friday peaks, Tuesday troughs).
+/// </summary>
+public class ConfluenceOrbStrategyConfig
+{
+    [ConfigField(Label = "ATR Stop Multiplier",
+                 Description = "Stop distance = AtrStopMultiplier × ATR(14). Default 0.15 per spec §6.2.",
+                 Group = "Risk", Kind = ConfigFieldKind.Multiplier, Min = 0, Max = 2, Step = 0.05, Unit = "x", Order = 0)]
+    public decimal AtrStopMultiplier { get; set; } = 0.15m;
+
+    [ConfigField(Label = "No-Fill Cutoff",
+                 Description = "Cancel unfilled stop-market orders at this IST time. Late breakouts are weaker (spec §6.1).",
+                 Group = "Timing", Kind = ConfigFieldKind.TimeOfDay, Order = 0)]
+    public TimeSpan NoFillCutoff { get; set; } = new TimeSpan(13, 0, 0);
+
+    [ConfigField(Label = "Time Exit",
+                 Description = "Square off all open positions at this IST time. Per IntradayLab data, gains concentrate in the morning session.",
+                 Group = "Timing", Kind = ConfigFieldKind.TimeOfDay, Order = 1)]
+    public TimeSpan ExitTime { get; set; } = new TimeSpan(14, 30, 0);
+
+    // ── Day-of-week sizing tilt (per IntradayLab 8-year Nifty data) ──
+    [ConfigField(Label = "Monday Multiplier",
+                 Description = "Sizing multiplier on Mondays.",
+                 Group = "Day-of-Week Sizing", Kind = ConfigFieldKind.Multiplier, Min = 0, Max = 3, Step = 0.1, Unit = "x", Order = 0)]
+    public decimal DayMultiplierMon { get; set; } = 1.0m;
+
+    [ConfigField(Label = "Tuesday Multiplier",
+                 Description = "Sizing multiplier on Tuesdays (historically weakest day for Indian intraday ORB).",
+                 Group = "Day-of-Week Sizing", Kind = ConfigFieldKind.Multiplier, Min = 0, Max = 3, Step = 0.1, Unit = "x", Order = 1)]
+    public decimal DayMultiplierTue { get; set; } = 0.5m;
+
+    [ConfigField(Label = "Wednesday Multiplier",
+                 Description = "Sizing multiplier on Wednesdays.",
+                 Group = "Day-of-Week Sizing", Kind = ConfigFieldKind.Multiplier, Min = 0, Max = 3, Step = 0.1, Unit = "x", Order = 2)]
+    public decimal DayMultiplierWed { get; set; } = 0.8m;
+
+    [ConfigField(Label = "Thursday Multiplier",
+                 Description = "Sizing multiplier on Thursdays.",
+                 Group = "Day-of-Week Sizing", Kind = ConfigFieldKind.Multiplier, Min = 0, Max = 3, Step = 0.1, Unit = "x", Order = 3)]
+    public decimal DayMultiplierThu { get; set; } = 1.2m;
+
+    [ConfigField(Label = "Friday Multiplier",
+                 Description = "Sizing multiplier on Fridays (historically strongest day per 8-yr data — 40% of total profit).",
+                 Group = "Day-of-Week Sizing", Kind = ConfigFieldKind.Multiplier, Min = 0, Max = 3, Step = 0.1, Unit = "x", Order = 4)]
+    public decimal DayMultiplierFri { get; set; } = 1.5m;
+}

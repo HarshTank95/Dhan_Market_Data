@@ -273,3 +273,104 @@ public class GapFadeConfig
                  Group = "Risk", Kind = ConfigFieldKind.Percent, Min = 0, Max = 10, Step = 0.1, Order = 0)]
     public decimal MaxStopLossPercent { get; set; } = 1.0m;
 }
+
+/// <summary>
+/// RVOL + ORB + OI Confluence Screener configuration.
+/// 15-min opening range breakout on F&O-eligible NSE stocks, filtered by
+/// cash RVOL and confirmed by F&O Open Interest direction. See
+/// docs/1_strategy-rvol-orb.md for the design and docs/2_strategy-rvol-orb-integration.md
+/// for how each field is consumed.
+///
+/// Long-only v1: only the 3 long-side cells from spec §5.4 trade
+/// (long buildup full-size, short covering half-size). Short rows
+/// and conflicts are skipped.
+/// </summary>
+public class RvolOrbConfig
+{
+    // ── Opening Range ────────────────────────────────────────────────
+    [ConfigField(Label = "Opening Range Minutes",
+                 Description = "Duration of the OR window starting at market open (09:15 IST).",
+                 Group = "Opening Range", Kind = ConfigFieldKind.Integer, Min = 5, Max = 60, Order = 0)]
+    public int OpeningRangeMinutes { get; set; } = 15;
+
+    [ConfigField(Label = "Doji Threshold",
+                 Description = "Reject the OR as a doji when |close-open| / range is below this fraction.",
+                 Group = "Opening Range", Kind = ConfigFieldKind.Number, Min = 0, Max = 1, Step = 0.01, Order = 1)]
+    public decimal DojiThreshold { get; set; } = 0.10m;
+
+    // ── RVOL ─────────────────────────────────────────────────────────
+    [ConfigField(Label = "RVOL Lookback Days",
+                 Description = "Sessions used to compute the same-15-min-slot baseline volume.",
+                 Group = "RVOL", Kind = ConfigFieldKind.Integer, Min = 5, Max = 60, Order = 0)]
+    public int RvolLookbackDays { get; set; } = 14;
+
+    [ConfigField(Label = "Min RVOL",
+                 Description = "Hard floor on RVOL_15min before scoring. Below this the stock is dropped.",
+                 Group = "RVOL", Kind = ConfigFieldKind.Multiplier, Min = 0, Step = 0.1, Unit = "x", Order = 1)]
+    public decimal MinRvol { get; set; } = 1.0m;
+
+    [ConfigField(Label = "Min Score Threshold",
+                 Description = "RVOL × confluence_w composite must exceed this to trade. v1 substitute for cross-stock top-N ranking.",
+                 Group = "RVOL", Kind = ConfigFieldKind.Multiplier, Min = 0, Step = 0.1, Unit = "x", Order = 2)]
+    public decimal MinScoreThreshold { get; set; } = 1.5m;
+
+    // ── Universe ─────────────────────────────────────────────────────
+    [ConfigField(Label = "Require F&O Only",
+                 Description = "Restrict universe to F&O-eligible NSE equities. Required for the OI signal.",
+                 Group = "Universe", Kind = ConfigFieldKind.Boolean, Order = 0)]
+    public bool RequireFnoOnly { get; set; } = true;
+
+    [ConfigField(Label = "Min Price",
+                 Description = "Skip stocks priced below this (₹). Penny names are unreliable on NSE.",
+                 Group = "Universe", Kind = ConfigFieldKind.Number, Min = 0, Step = 1, Unit = "₹", Order = 1)]
+    public decimal MinPrice { get; set; } = 50m;
+
+    [ConfigField(Label = "Min Avg Rupee Volume",
+                 Description = "30-day average daily turnover floor (rupees). Default ₹100 Cr.",
+                 Group = "Universe", Kind = ConfigFieldKind.Integer, Min = 0, Order = 2)]
+    public long MinAvgRupeeVolume { get; set; } = 1000000000L;
+
+    [ConfigField(Label = "Min ATR %",
+                 Description = "ATR(14) must be at least this % of price (otherwise the range is too narrow).",
+                 Group = "Universe", Kind = ConfigFieldKind.Percent, Min = 0, Max = 10, Step = 0.1, Order = 3)]
+    public decimal MinAtrPercent { get; set; } = 1.0m;
+
+    [ConfigField(Label = "Max Yesterday Range %",
+                 Description = "Reject if prior day high-low exceeded this fraction of close (circuit-lock proxy).",
+                 Group = "Universe", Kind = ConfigFieldKind.Percent, Min = 0, Max = 100, Step = 0.5, Order = 4)]
+    public decimal MaxYesterdayRangePct { get; set; } = 9.0m;
+
+    // ── Trend / Volatility ───────────────────────────────────────────
+    [ConfigField(Label = "ATR Lookback",
+                 Description = "Wilder's ATR window on daily candles.",
+                 Group = "Volatility", Kind = ConfigFieldKind.Integer, Min = 5, Max = 50, Order = 0)]
+    public int AtrLookback { get; set; } = 14;
+
+    // ── OI Confluence ────────────────────────────────────────────────
+    [ConfigField(Label = "Require OI Confluence",
+                 Description = "Require OI direction to agree with futures price direction. Disable to test plain RVOL+ORB.",
+                 Group = "OI Confluence", Kind = ConfigFieldKind.Boolean, Order = 0)]
+    public bool RequireOiConfluence { get; set; } = true;
+
+    [ConfigField(Label = "Min OI Delta %",
+                 Description = "Minimum |OI_end - OI_start| / OI_start × 100 to count as a directional OI move.",
+                 Group = "OI Confluence", Kind = ConfigFieldKind.Percent, Min = 0, Max = 50, Step = 0.1, Order = 1)]
+    public decimal MinOiDeltaPercent { get; set; } = 1.0m;
+
+    // ── Regime ───────────────────────────────────────────────────────
+    [ConfigField(Label = "Skip Day If India VIX Above",
+                 Description = "Whole-day skip when India VIX (at open) is at or above this level.",
+                 Group = "Regime", Kind = ConfigFieldKind.Number, Min = 0, Max = 100, Step = 0.5, Order = 0)]
+    public decimal SkipDayIfIndiaVixAbove { get; set; } = 25.0m;
+
+    [ConfigField(Label = "Skip Day If Nifty Gap > %",
+                 Description = "Whole-day skip when |Nifty 50 open vs prev close gap| exceeds this %.",
+                 Group = "Regime", Kind = ConfigFieldKind.Percent, Min = 0, Max = 20, Step = 0.1, Order = 1)]
+    public decimal SkipDayIfNiftyGapPct { get; set; } = 2.0m;
+
+    // ── General ──────────────────────────────────────────────────────
+    [ConfigField(Label = "Min Historical Days",
+                 Description = "Daily-candle minimum for ATR + RVOL baselines (covers RvolLookbackDays + AtrLookback with cushion).",
+                 Group = "General", Kind = ConfigFieldKind.Integer, Min = 14, Max = 100, Order = 0)]
+    public int MinHistoricalDays { get; set; } = 28;
+}
