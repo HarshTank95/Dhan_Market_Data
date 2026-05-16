@@ -24,6 +24,9 @@ public class BacktestEngine
     /// <summary>Whether this engine's screener consumes daily candles in addition to intraday.</summary>
     public bool RequiresDailyCandles => _screener.RequiresDailyCandles;
 
+    /// <summary>Whether this engine's screener consumes intraday F&amp;O futures candles with OI.</summary>
+    public bool RequiresFuturesCandles => _screener.RequiresFuturesCandles;
+
     // Convert IST time from config to UTC for comparison with candle timestamps
     private TimeSpan IstToUtc(TimeSpan istTime)
     {
@@ -32,7 +35,7 @@ public class BacktestEngine
     }
 
     public Trade? BacktestDay(string symbol, string securityId, DateTime date, List<Candle> candles)
-        => BacktestDay(symbol, securityId, date, candles, dailyCandles: null);
+        => BacktestDay(symbol, securityId, date, candles, dailyCandles: null, futuresCandles: null);
 
     public Trade? BacktestDay(
         string symbol,
@@ -40,8 +43,17 @@ public class BacktestEngine
         DateTime date,
         List<Candle> candles,
         List<Candle>? dailyCandles)
+        => BacktestDay(symbol, securityId, date, candles, dailyCandles, futuresCandles: null);
+
+    public Trade? BacktestDay(
+        string symbol,
+        string securityId,
+        DateTime date,
+        List<Candle> candles,
+        List<Candle>? dailyCandles,
+        List<Candle>? futuresCandles)
     {
-        var context = new ScreenerContext(candles, dailyCandles);
+        var context = new ScreenerContext(candles, dailyCandles, futuresCandles);
 
         // Phase 9C: call MeetsSignal so screeners that compute a sizing
         // multiplier can pass it through. Legacy screeners inherit the

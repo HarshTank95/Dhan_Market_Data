@@ -108,8 +108,8 @@ public class BacktestOrchestrator
             var chunkBacktestDays = allTradingDays.Skip(chunkStart).Take(currentChunkSize).ToList();
             var chunkAllDays = allTradingDays.Skip(chunkStart).Take(currentChunkSize + preRollDays).ToList();
 
-            // Fetch data for this chunk only (intraday + optionally daily)
-            var (stockData, stockDailyData) = await FetchHistoricalDataAsync(
+            // Fetch data for this chunk only (intraday + optionally daily + optionally FUT-with-OI)
+            var (stockData, stockDailyData, stockFuturesData) = await FetchHistoricalDataAsync(
                 stocks, chunkAllDays,
                 progress, daysProcessed, days, chunkNumber, totalChunks,
                 cancellationToken);
@@ -117,7 +117,7 @@ public class BacktestOrchestrator
 
             // Run backtest for this chunk
             var chunkTrades = await ExecuteBacktestAsync(
-                stocks, stockData, stockDailyData, chunkBacktestDays, chunkAllDays,
+                stocks, stockData, stockDailyData, stockFuturesData, chunkBacktestDays, chunkAllDays,
                 progress, daysProcessed, days, chunkNumber, totalChunks,
                 cancellationToken);
             allTrades.AddRange(chunkTrades);
@@ -135,6 +135,7 @@ public class BacktestOrchestrator
             // Clear memory before next chunk
             stockData.Clear();
             stockDailyData.Clear();
+            stockFuturesData.Clear();
             if (chunkNumber < totalChunks)
             {
                 GC.Collect();
@@ -203,7 +204,8 @@ public class BacktestOrchestrator
 
     private async Task<(
         Dictionary<string, Dictionary<DateTime, List<Candle>>> Intraday,
-        Dictionary<string, List<Candle>> Daily)> FetchHistoricalDataAsync(
+        Dictionary<string, List<Candle>> Daily,
+        Dictionary<string, Dictionary<DateTime, List<Candle>>> Futures)> FetchHistoricalDataAsync(
         List<Instrument> stocks,
         List<DateTime> tradingDays,
         IProgress<BacktestProgress>? progress = null,
@@ -216,12 +218,19 @@ public class BacktestOrchestrator
         Console.WriteLine("Fetching historical data...");
         var stockData = new Dictionary<string, Dictionary<DateTime, List<Candle>>>();
         var stockDailyData = new Dictionary<string, List<Candle>>();
+        var stockFuturesData = new Dictionary<string, Dictionary<DateTime, List<Candle>>>();
 
         // Daily data is only fetched when the active screener consumes it
         // (e.g. GapFadeScreener). One range-fetch per stock vs. one per day.
         var needDaily = _backtestEngine.RequiresDailyCandles;
         var dailyFromDate = tradingDays.Count > 0 ? tradingDays.Min() : DateTime.Today;
         var dailyToDate = tradingDays.Count > 0 ? tradingDays.Max() : DateTime.Today;
+
+        // Futures-with-OI data is only fetched when the active screener
+        // consumes it (e.g. RvolOrbScreener). One contract-resolution +
+        // intraday fetch per (stock, day).
+        var needFutures = _backtestEngine.RequiresFuturesCandles;
+        var futResolver = needFutures ? new FuturesContractResolver(_instrumentService) : null;
 
         for (int i = 0; i < stocks.Count; i++)
         {
@@ -262,6 +271,33 @@ public class BacktestOrchestrator
                 stockDailyData[stock.SecurityId] = new List<Candle>();
             }
 
+            if (needFutures && futResolver is not null)
+            {
+                stockFuturesData[stock.SecurityId] = new Dictionary<DateTime, List<Candle>>();
+                foreach (var day in tradingDays)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // Resolve the active FUT contract for this (stock, day) — the contract
+                    // that was the near-month one on that historical date.
+                    var fut = futResolver.ResolveNearMonth(stock.TradingSymbol, day);
+                    if (fut is null) continue;
+
+                    var futCandles = await _cache.LoadOrFetchFutWithOiAsync(
+                        fut.SecurityId,
+                        day,
+                        _config.Timeframe,
+                        "NSE_FNO",
+                        _tradingConfig.MarketOpenTime,
+                        _tradingConfig.MarketCloseTime,
+                        cancellationToken);
+
+                    if (futCandles.Count > 0)
+                    {
+                        stockFuturesData[stock.SecurityId][day] = futCandles;
+                    }
+                }
+            }
+
             Console.Write($"\rProcessed {i + 1}/{stocks.Count} stocks");
 
             progress?.Report(new BacktestProgress(
@@ -279,13 +315,14 @@ public class BacktestOrchestrator
             });
         }
 
-        return (stockData, stockDailyData);
+        return (stockData, stockDailyData, stockFuturesData);
     }
 
     private async Task<List<Trade>> ExecuteBacktestAsync(
         List<Instrument> stocks,
         Dictionary<string, Dictionary<DateTime, List<Candle>>> stockData,
         Dictionary<string, List<Candle>> stockDailyData,
+        Dictionary<string, Dictionary<DateTime, List<Candle>>> stockFuturesData,
         List<DateTime> backtestDays,
         List<DateTime> allTradingDays,
         IProgress<BacktestProgress>? progress = null,
@@ -339,12 +376,22 @@ public class BacktestOrchestrator
                     dailyForToday = allDaily.Where(c => c.Timestamp.Date < day.Date).ToList();
                 }
 
+                // Futures candles (with OI) for `day` itself, only for screeners that ask
+                List<Candle>? futuresForToday = null;
+                if (_backtestEngine.RequiresFuturesCandles &&
+                    stockFuturesData.TryGetValue(stock.SecurityId, out var perDayFut) &&
+                    perDayFut.TryGetValue(day, out var futToday))
+                {
+                    futuresForToday = futToday;
+                }
+
                 var trade = _backtestEngine.BacktestDay(
                     stock.TradingSymbol,
                     stock.SecurityId,
                     day,
                     allCandles,
-                    dailyForToday);
+                    dailyForToday,
+                    futuresForToday);
 
                 if (trade != null)
                 {

@@ -4,12 +4,15 @@ namespace DhanMarketData.Core.Interfaces;
 
 /// <summary>
 /// Bundle of candle data passed to a screener.
-/// Intraday candles always populated. Daily candles populated only when the
-/// screener requires them (declared via <see cref="IScreener.RequiresDailyCandles"/>).
+/// Intraday candles always populated. Daily and Futures candles populated
+/// only when the screener requires them (declared via
+/// <see cref="IScreener.RequiresDailyCandles"/> and
+/// <see cref="IScreener.RequiresFuturesCandles"/> respectively).
 /// </summary>
 public sealed record ScreenerContext(
     List<Candle> Intraday,
-    List<Candle>? Daily = null);
+    List<Candle>? Daily = null,
+    List<Candle>? Futures = null);
 
 /// <summary>
 /// What a screener returns when it picks a stock for today.
@@ -62,6 +65,16 @@ public interface IScreener
     /// over daily history (e.g. GapFadeScreener).
     /// </summary>
     bool RequiresDailyCandles => false;
+
+    /// <summary>
+    /// Whether this screener needs intraday F&O futures candles WITH Open
+    /// Interest in addition to cash intraday. Set true for confluence
+    /// screeners (RvolOrbScreener). When true the orchestrator resolves
+    /// the near-month FUTSTK contract for each (stock, day) and fetches
+    /// it via HistoricalDataCache.LoadOrFetchFutWithOiAsync, threaded
+    /// through ScreenerContext.Futures.
+    /// </summary>
+    bool RequiresFuturesCandles => false;
 
     /// <summary>
     /// Checks if the given candles meet the screening conditions
