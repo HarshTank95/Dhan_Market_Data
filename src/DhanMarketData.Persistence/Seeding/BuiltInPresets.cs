@@ -144,5 +144,43 @@ public static class BuiltInPresets
             CreatedAt = SeedTimestamp,
             UpdatedAt = SeedTimestamp,
         },
+        new StrategyPreset
+        {
+            Id = 5,
+            Name = "Gap Fade (Long)",
+            Description = "Quiet, ATR-normalized gap-downs on liquid trending stocks; confirmation-candle entry inside 09:30–10:15 window; mean-reversion long.",
+            IsBuiltIn = true,
+            ScreenerType = "gapfade",
+            StrategyType = "gapfadelong",
+            ScreenerConfigJson = """
+                {
+                  "MinGapAtrRatio": 0.20,
+                  "MaxGapAtrRatio": 0.60,
+                  "RequirePartialGap": true,
+                  "RequireUnfilledAtEntry": true,
+                  "MaxOpeningVolumeMultiplier": 0.8,
+                  "MinAbsoluteVolume": 1000,
+                  "VolumeAverageDays": 10,
+                  "MinAverageDailyVolume": 500000,
+                  "MinPrice": 100,
+                  "RequireUptrend": true,
+                  "SmaPeriod": 20,
+                  "AtrPeriod": 14,
+                  "MinHistoricalDays": 25,
+                  "MaxStopLossPercent": 1.0
+                }
+                """,
+            StrategyConfigJson = """
+                {
+                  "EntryWindowStart": "09:30:00",
+                  "EntryWindowEnd": "10:15:00",
+                  "RequireConfirmationCandle": true,
+                  "TimeExit": "12:30:00"
+                }
+                """,
+            TradingConfigJson = SharedTradingConfigJson,
+            CreatedAt = SeedTimestamp,
+            UpdatedAt = SeedTimestamp,
+        },
     };
 }

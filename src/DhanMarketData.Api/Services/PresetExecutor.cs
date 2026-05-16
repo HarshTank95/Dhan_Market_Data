@@ -85,6 +85,7 @@ public sealed class PresetExecutor : IPresetExecutor
             "breakout" => "Breakout",
             "dominancecandle" => "DominanceCandle",
             "openingrange" => "OpeningRange",
+            "gapfade" => "GapFade",
             _ => throw new ArgumentException($"Unknown screener type: {preset.ScreenerType}"),
         };
 
@@ -92,6 +93,19 @@ public sealed class PresetExecutor : IPresetExecutor
         {
             [screenerSectionKey] = JsonNode.Parse(preset.ScreenerConfigJson),
         };
+
+        // Strategies section: only populated for strategies that have their own
+        // config class. Most strategies share TradingConfig and need no entry here.
+        var strategiesNode = new JsonObject();
+        var strategySectionKey = preset.StrategyType.ToLowerInvariant() switch
+        {
+            "gapfadelong" => "GapFadeLong",
+            _ => null,
+        };
+        if (strategySectionKey is not null && !string.IsNullOrWhiteSpace(preset.StrategyConfigJson))
+        {
+            strategiesNode[strategySectionKey] = JsonNode.Parse(preset.StrategyConfigJson);
+        }
 
         var root = new JsonObject
         {
@@ -107,6 +121,7 @@ public sealed class PresetExecutor : IPresetExecutor
             },
             ["Trading"] = JsonNode.Parse(preset.TradingConfigJson),
             ["Screeners"] = screenersNode,
+            ["Strategies"] = strategiesNode,
         };
 
         var json = root.ToJsonString();

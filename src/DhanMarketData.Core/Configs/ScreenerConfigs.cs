@@ -184,3 +184,92 @@ public class OpeningRangeConfig : ScreenerConfig
                  Group = "Candle Shape", Kind = ConfigFieldKind.Multiplier, Min = 0, Step = 0.1, Unit = "x", Order = 2)]
     public decimal MaxCandleSizeMultiplier { get; set; } = 3.0m;
 }
+
+/// <summary>
+/// Gap Fade (Long) Screener configuration.
+/// Identifies quiet, ATR-normalized gap-downs on liquid trending stocks
+/// that are research-grade candidates for mean reversion (gap fill).
+///
+/// Research: ATR-normalized gap is the dominant predictor of fill rate
+/// (small gaps fill ~78%, large gaps ~8%). Volume + trend filters protect
+/// against catalyst-driven continuation.
+/// </summary>
+public class GapFadeConfig
+{
+    // ── Gap Size (the dominant predictor) ────────────────────────────
+    [ConfigField(Label = "Min Gap / ATR Ratio",
+                 Description = "Lower bound on gapSize / 14-day ATR. Below this the gap is too small to bother with.",
+                 Group = "Gap Size", Kind = ConfigFieldKind.Number, Min = 0, Max = 5, Step = 0.05, Order = 0)]
+    public decimal MinGapAtrRatio { get; set; } = 0.20m;
+
+    [ConfigField(Label = "Max Gap / ATR Ratio",
+                 Description = "Upper bound on gapSize / 14-day ATR. Above this fill probability collapses (research).",
+                 Group = "Gap Size", Kind = ConfigFieldKind.Number, Min = 0, Max = 5, Step = 0.05, Order = 1)]
+    public decimal MaxGapAtrRatio { get; set; } = 0.60m;
+
+    // ── Gap Quality ──────────────────────────────────────────────────
+    [ConfigField(Label = "Require Partial Gap",
+                 Description = "Require firstCandle.Open > prior day low (gap doesn't fully escape prior range — partial gaps fill more often).",
+                 Group = "Gap Quality", Kind = ConfigFieldKind.Boolean, Order = 0)]
+    public bool RequirePartialGap { get; set; } = true;
+
+    [ConfigField(Label = "Require Unfilled at Entry",
+                 Description = "Reject if firstCandle.High >= prior close (gap already filled in the first 5 min).",
+                 Group = "Gap Quality", Kind = ConfigFieldKind.Boolean, Order = 1)]
+    public bool RequireUnfilledAtEntry { get; set; } = true;
+
+    // ── Volume (catalyst filter) ─────────────────────────────────────
+    [ConfigField(Label = "Max Opening Volume Multiplier",
+                 Description = "First candle volume must be ≤ this × historical 9:15-bar average. Tight (0.8) keeps catalyst-driven gaps out.",
+                 Group = "Volume", Kind = ConfigFieldKind.Multiplier, Min = 0, Step = 0.1, Unit = "x", Order = 0)]
+    public decimal MaxOpeningVolumeMultiplier { get; set; } = 0.8m;
+
+    [ConfigField(Label = "Min Absolute Volume",
+                 Description = "Floor on raw share volume in the first candle (sanity check).",
+                 Group = "Volume", Kind = ConfigFieldKind.Integer, Min = 0, Order = 1)]
+    public long MinAbsoluteVolume { get; set; } = 1000;
+
+    [ConfigField(Label = "Volume Average Days",
+                 Description = "Days used to compute the historical 9:15-bar volume average.",
+                 Group = "Volume", Kind = ConfigFieldKind.Integer, Min = 1, Max = 60, Order = 2)]
+    public int VolumeAverageDays { get; set; } = 10;
+
+    // ── Liquidity ────────────────────────────────────────────────────
+    [ConfigField(Label = "Min Avg Daily Volume",
+                 Description = "20-day avg daily volume floor. Skip illiquid names where slippage destroys edge.",
+                 Group = "Liquidity", Kind = ConfigFieldKind.Integer, Min = 0, Order = 0)]
+    public long MinAverageDailyVolume { get; set; } = 500000;
+
+    [ConfigField(Label = "Min Price",
+                 Description = "Skip stocks priced below this (₹). Penny names are unreliable on NSE.",
+                 Group = "Liquidity", Kind = ConfigFieldKind.Number, Min = 0, Step = 1, Unit = "₹", Order = 1)]
+    public decimal MinPrice { get; set; } = 100m;
+
+    // ── Trend Filter ─────────────────────────────────────────────────
+    [ConfigField(Label = "Require Uptrend",
+                 Description = "Require prior close > 20-day SMA. Skips fading gap-downs in downtrends (continuation risk).",
+                 Group = "Trend", Kind = ConfigFieldKind.Boolean, Order = 0)]
+    public bool RequireUptrend { get; set; } = true;
+
+    [ConfigField(Label = "SMA Period",
+                 Description = "Trend SMA lookback (daily candles).",
+                 Group = "Trend", Kind = ConfigFieldKind.Integer, Min = 5, Max = 200, Order = 1)]
+    public int SmaPeriod { get; set; } = 20;
+
+    [ConfigField(Label = "ATR Period",
+                 Description = "ATR lookback (daily candles, Wilder's smoothing).",
+                 Group = "Trend", Kind = ConfigFieldKind.Integer, Min = 5, Max = 50, Order = 2)]
+    public int AtrPeriod { get; set; } = 14;
+
+    // ── General ──────────────────────────────────────────────────────
+    [ConfigField(Label = "Min Historical Days",
+                 Description = "Minimum daily candles required for ATR + SMA to be valid. Drives orchestrator's pre-roll buffer.",
+                 Group = "General", Kind = ConfigFieldKind.Integer, Min = 10, Max = 100, Order = 0)]
+    public int MinHistoricalDays { get; set; } = 25;
+
+    // ── Risk ─────────────────────────────────────────────────────────
+    [ConfigField(Label = "Max Stop Loss %",
+                 Description = "Cap on (entry − gapCandleLow)/entry × 100. Tightens SL for unusually wide gap candles.",
+                 Group = "Risk", Kind = ConfigFieldKind.Percent, Min = 0, Max = 10, Step = 0.1, Order = 0)]
+    public decimal MaxStopLossPercent { get; set; } = 1.0m;
+}

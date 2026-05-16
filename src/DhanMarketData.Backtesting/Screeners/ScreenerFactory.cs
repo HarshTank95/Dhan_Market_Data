@@ -30,6 +30,9 @@ public static class ScreenerFactory
             "openingrange" => new OpeningRangeScreener(
                 configuration.GetSection("Screeners:OpeningRange").Get<OpeningRangeConfig>() ?? new OpeningRangeConfig()
             ),
+            "gapfade" => new GapFadeScreener(
+                configuration.GetSection("Screeners:GapFade").Get<GapFadeConfig>() ?? new GapFadeConfig()
+            ),
             _ => throw new ArgumentException($"Unknown screener type: {screenerType}. Available: {string.Join(", ", GetAvailableScreeners())}")
         };
     }
@@ -41,7 +44,8 @@ public static class ScreenerFactory
             "volumespike",
             "breakout",
             "dominancecandle",
-            "openingrange"
+            "openingrange",
+            "gapfade"
         };
     }
 
@@ -52,7 +56,8 @@ public static class ScreenerFactory
             { "volumespike", "Detects high volume green candles at market open" },
             { "breakout", "Detects price breakouts from consolidation zones" },
             { "dominancecandle", "Identifies strong bullish candles with dominant body (70-80% body, ≥5% wicks)" },
-            { "openingrange", "Identifies clean gap-up stocks with opening range breakout potential (≥1.2% gap, ≤30% upper wick)" }
+            { "openingrange", "Identifies clean gap-up stocks with opening range breakout potential (≥1.2% gap, ≤30% upper wick)" },
+            { "gapfade", "Quiet, ATR-normalized gap-downs on liquid trending stocks (mean-reversion candidates)" }
         };
     }
 }

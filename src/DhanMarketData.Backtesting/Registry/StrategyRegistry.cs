@@ -1,3 +1,5 @@
+using DhanMarketData.Configs;
+
 namespace DhanMarketData.Backtesting.Registry;
 
 // All current strategies share TradingConfig (exposed separately) and have no
@@ -44,6 +46,14 @@ public sealed class StrategyRegistry : IStrategyRegistry
                 Description = "Enter on a break above OR.High inside the configured execution window. Fixed SL/target.",
                 ConfigClassName = "",
                 Fields = Array.Empty<RegistryField>(),
+            },
+            new RegistryEntry
+            {
+                Key = "gapfadelong",
+                DisplayName = "Gap Fade (Long)",
+                Description = "Walk an entry window, wait for a confirmation candle (green close + breaks prior high), enter at next candle's open. SL = min(gap-low, capped %). RR target via TradingConfig.",
+                ConfigClassName = nameof(GapFadeStrategyConfig),
+                Fields = ConfigSchemaReflector.ExtractFields(typeof(GapFadeStrategyConfig)),
             },
         };
 

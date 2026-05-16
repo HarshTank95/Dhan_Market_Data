@@ -27,6 +27,9 @@ public sealed class ScreenerRegistry : IScreenerRegistry
             BuildEntry("openingrange", "Opening Range",
                 "Identifies clean gap-up + opening-range structures with breakout confirmation.",
                 typeof(OpeningRangeConfig)),
+            BuildEntry("gapfade", "Gap Fade (Long)",
+                "Quiet, ATR-normalized gap-downs on liquid trending stocks — research-grade mean-reversion candidates.",
+                typeof(GapFadeConfig)),
         };
 
         _byKey = _entries.ToDictionary(e => e.Key, StringComparer.OrdinalIgnoreCase);

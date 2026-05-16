@@ -19,13 +19,16 @@ public static class StrategyFactory
         var tradingConfig = configuration.GetSection("Trading").Get<TradingConfig>() ?? new TradingConfig();
         var dominanceConfig = configuration.GetSection("Screeners:DominanceCandle").Get<DominanceCandleConfig>() ?? new DominanceCandleConfig();
         var openingRangeConfig = configuration.GetSection("Screeners:OpeningRange").Get<OpeningRangeConfig>() ?? new OpeningRangeConfig();
-        
+        var gapFadeConfig = configuration.GetSection("Screeners:GapFade").Get<GapFadeConfig>() ?? new GapFadeConfig();
+        var gapFadeStrategyConfig = configuration.GetSection("Strategies:GapFadeLong").Get<GapFadeStrategyConfig>() ?? new GapFadeStrategyConfig();
+
         return strategyType.ToLower() switch
         {
             "fixedtarget" => new FixedTargetStrategy(tradingConfig),
             "breakoutentry" => new BreakoutEntryStrategy(tradingConfig, dominanceConfig),
             "trailingstop" => new TrailingStopStrategy(tradingConfig, dominanceConfig),
             "openingrange" => new OpeningRangeBreakoutStrategy(tradingConfig, openingRangeConfig),
+            "gapfadelong" => new GapFadeLongStrategy(tradingConfig, gapFadeConfig, gapFadeStrategyConfig),
             _ => throw new ArgumentException($"Unknown strategy type: {strategyType}. Available: {string.Join(", ", GetAvailableStrategies())}")
         };
     }
@@ -37,7 +40,8 @@ public static class StrategyFactory
             "fixedtarget",
             "breakoutentry",
             "trailingstop",
-            "openingrange"
+            "openingrange",
+            "gapfadelong"
         };
     }
 
@@ -48,7 +52,8 @@ public static class StrategyFactory
             { "fixedtarget", "Fixed SL and Target amounts with calculated position size" },
             { "breakoutentry", "Entry on dominance candle breakout with immediate confirmation" },
             { "trailingstop", "Trail SL by fixed steps, no target - ride the trend" },
-            { "openingrange", "Opening range breakout entry (9:25-9:45), SL at OR low, fixed target" }
+            { "openingrange", "Opening range breakout entry (9:25-9:45), SL at OR low, fixed target" },
+            { "gapfadelong", "Gap fade long: confirmation entry inside a configurable window, RR target via TradingConfig" }
         };
     }
 }
