@@ -58,4 +58,22 @@ public interface IStrategy
         Candle entryCandle,
         decimal sizingMultiplier)
         => ExecuteTrade(symbol, securityId, date, candles, signalCandles, entryCandle);
+
+    /// <summary>
+    /// Multiplier + ATR overload (Phase 9D-4). Adds the screener's
+    /// computed ATR so strategies can size their stop distance from it
+    /// (e.g. stop = entry − k×ATR). Default impl drops the ATR and
+    /// delegates to the multiplier-aware overload — legacy strategies
+    /// behave identically.
+    /// </summary>
+    Trade? ExecuteTrade(
+        string symbol,
+        string securityId,
+        DateTime date,
+        List<Candle> candles,
+        List<Candle> signalCandles,
+        Candle entryCandle,
+        decimal sizingMultiplier,
+        decimal atr)
+        => ExecuteTrade(symbol, securityId, date, candles, signalCandles, entryCandle, sizingMultiplier);
 }

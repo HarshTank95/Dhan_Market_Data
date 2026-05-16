@@ -70,12 +70,14 @@ public class BacktestEngine
         if (entryCandle == null)
             return null;
 
-        // Delegate to the multiplier-aware overload. Legacy strategies
-        // inherit the default impl that ignores the multiplier — again
-        // byte-identical for unchanged code paths.
+        // Delegate to the 8-arg multiplier+ATR overload. Legacy strategies
+        // inherit the default that drops the new args and delegates back
+        // to the 6-arg version — again byte-identical for unchanged code
+        // paths. RVOL+ORB+OI's strategy overrides this overload to consume
+        // the ATR for its stop-distance math.
         return _strategy.ExecuteTrade(
             symbol, securityId, date, candles,
-            signal.Candles, entryCandle, signal.SizingMultiplier);
+            signal.Candles, entryCandle, signal.SizingMultiplier, signal.Atr);
     }
 
     public void PrintSummary(List<Trade> trades)
