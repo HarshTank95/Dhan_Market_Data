@@ -151,6 +151,114 @@ public class HistoricalDataCache
         }
     }
     
+    /// <summary>
+    /// Fetch DAILY candles over a date range — one API call per stock instead
+    /// of one per day. Cache layout for daily uses ONE file per stock
+    /// (data/{seg}/1day/{securityId}.json) which holds all fetched daily
+    /// candles; subsequent calls slice from the cached set if covered, else
+    /// fetch + merge.
+    /// </summary>
+    public async Task<List<Candle>> LoadOrFetchDailyRangeAsync(
+        string securityId,
+        DateTime fromDate,
+        DateTime toDate,
+        string exchangeSegment = "NSE_EQ",
+        CancellationToken ct = default)
+    {
+        var folder = Path.Combine(_cacheDirectory, exchangeSegment, "1day");
+        Directory.CreateDirectory(folder);
+        var filePath = Path.Combine(folder, $"{securityId}.json");
+        var memoryKey = $"{exchangeSegment}_1day_{securityId}_RANGE";
+
+        // Memory cache: return slice if it covers the request
+        if (_memoryCache.TryGetValue(memoryKey, out var cached) && cached.Count > 0)
+        {
+            var minCached = cached.Min(c => c.Timestamp.Date);
+            var maxCached = cached.Max(c => c.Timestamp.Date);
+            if (minCached <= fromDate.Date && maxCached >= toDate.Date)
+            {
+                return cached
+                    .Where(c => c.Timestamp.Date >= fromDate.Date && c.Timestamp.Date <= toDate.Date)
+                    .ToList();
+            }
+        }
+
+        // Negative cache (delisted / no data)
+        if (_missingDataCache.Contains(memoryKey))
+            return new List<Candle>();
+
+        // Disk cache
+        List<Candle> existing = new();
+        if (File.Exists(filePath))
+        {
+            var json = await File.ReadAllTextAsync(filePath, ct);
+            existing = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
+
+            if (existing.Count == 0)
+            {
+                _missingDataCache.Add(memoryKey);
+                return new List<Candle>();
+            }
+
+            var minCached = existing.Min(c => c.Timestamp.Date);
+            var maxCached = existing.Max(c => c.Timestamp.Date);
+            if (minCached <= fromDate.Date && maxCached >= toDate.Date)
+            {
+                AddToMemoryCache(memoryKey, existing);
+                return existing
+                    .Where(c => c.Timestamp.Date >= fromDate.Date && c.Timestamp.Date <= toDate.Date)
+                    .ToList();
+            }
+        }
+
+        // Fetch full requested range from API (single call vs. one-per-day)
+        try
+        {
+            var fetched = await _apiClient.GetDailyHistoricalAsync(
+                securityId, fromDate, toDate, exchangeSegment, ct);
+
+            if (fetched.Count == 0 && existing.Count == 0)
+            {
+                await File.WriteAllTextAsync(filePath, "[]", ct);
+                _missingDataCache.Add(memoryKey);
+                return new List<Candle>();
+            }
+
+            // Merge with existing (dedupe by Date — fetched wins on overlap)
+            var fetchedDates = fetched.Select(c => c.Timestamp.Date).ToHashSet();
+            var merged = existing
+                .Where(c => !fetchedDates.Contains(c.Timestamp.Date))
+                .Concat(fetched)
+                .OrderBy(c => c.Timestamp)
+                .ToList();
+
+            var output = JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = false });
+            await File.WriteAllTextAsync(filePath, output, ct);
+            AddToMemoryCache(memoryKey, merged);
+
+            return merged
+                .Where(c => c.Timestamp.Date >= fromDate.Date && c.Timestamp.Date <= toDate.Date)
+                .ToList();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (!ex.Message.Contains("status code"))
+            {
+                _errorLogger.LogError(
+                    "HistoricalDataCache.LoadOrFetchDailyRangeAsync",
+                    $"Error fetching daily data for security {securityId} from {fromDate:yyyy-MM-dd} to {toDate:yyyy-MM-dd}",
+                    ex);
+            }
+            await File.WriteAllTextAsync(filePath, "[]", ct);
+            _missingDataCache.Add(memoryKey);
+            return new List<Candle>();
+        }
+    }
+
     private void AddToMemoryCache(string key, List<Candle> candles)
     {
         // LRU cache: if full, remove oldest entry

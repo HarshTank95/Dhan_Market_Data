@@ -59,14 +59,16 @@ public class BacktestOrchestrator
         Console.WriteLine($"Timeframe: {_config.Timeframe}");
         Console.WriteLine($"Mode: {(_config.DataFetchOnly ? "Data Fetch Only" : "Backtest")}\n");
 
-        // Load instruments
-        await _instrumentService.LoadInstrumentsAsync();
+        // Load instruments (refreshes from Dhan scrip-master if stale >24h)
+        await _instrumentService.LoadInstrumentsAsync(cancellationToken);
         var stocks = _instrumentService.GetNseEquities(count);
         Console.WriteLine($"Loaded {stocks.Count} Nifty 500 stocks\n");
 
-        // Get all trading days: backtest N days + 10 days prior history for averages
-        var allTradingDays = _calendar.GetLastTradingDays(days + 10);
-        Console.WriteLine($"Data Range: {allTradingDays.Skip(10).Last():yyyy-MM-dd} to {allTradingDays.First():yyyy-MM-dd} ({days} days)");
+        // Pre-roll buffer: how many extra prior days the screener needs for averages.
+        // Driven by the active screener's RequiredHistoricalDays (default 10 = legacy behavior).
+        var preRollDays = _backtestEngine.RequiredHistoricalDays;
+        var allTradingDays = _calendar.GetLastTradingDays(days + preRollDays);
+        Console.WriteLine($"Data Range: {allTradingDays.Skip(preRollDays).Last():yyyy-MM-dd} to {allTradingDays.First():yyyy-MM-dd} ({days} days, {preRollDays}d pre-roll)");
 
         if (_config.DataFetchOnly)
         {
@@ -102,12 +104,12 @@ public class BacktestOrchestrator
 
             Console.WriteLine($"--- Chunk {chunkNumber}/{totalChunks}: Days {chunkStart + 1}-{chunkStart + currentChunkSize} ---");
 
-            // Get days for this chunk: backtest days + 10 days after for historical context
+            // Get days for this chunk: backtest days + pre-roll days after for historical context
             var chunkBacktestDays = allTradingDays.Skip(chunkStart).Take(currentChunkSize).ToList();
-            var chunkAllDays = allTradingDays.Skip(chunkStart).Take(currentChunkSize + 10).ToList();
+            var chunkAllDays = allTradingDays.Skip(chunkStart).Take(currentChunkSize + preRollDays).ToList();
 
-            // Fetch data for this chunk only
-            var stockData = await FetchHistoricalDataAsync(
+            // Fetch data for this chunk only (intraday + optionally daily)
+            var (stockData, stockDailyData) = await FetchHistoricalDataAsync(
                 stocks, chunkAllDays,
                 progress, daysProcessed, days, chunkNumber, totalChunks,
                 cancellationToken);
@@ -115,7 +117,7 @@ public class BacktestOrchestrator
 
             // Run backtest for this chunk
             var chunkTrades = await ExecuteBacktestAsync(
-                stocks, stockData, chunkBacktestDays, chunkAllDays,
+                stocks, stockData, stockDailyData, chunkBacktestDays, chunkAllDays,
                 progress, daysProcessed, days, chunkNumber, totalChunks,
                 cancellationToken);
             allTrades.AddRange(chunkTrades);
@@ -132,6 +134,7 @@ public class BacktestOrchestrator
 
             // Clear memory before next chunk
             stockData.Clear();
+            stockDailyData.Clear();
             if (chunkNumber < totalChunks)
             {
                 GC.Collect();
@@ -198,7 +201,9 @@ public class BacktestOrchestrator
         Console.WriteLine($"\n\nData fetch complete: {successCount} stocks cached successfully, {errorCount} errors\n");
     }
 
-    private async Task<Dictionary<string, Dictionary<DateTime, List<Candle>>>> FetchHistoricalDataAsync(
+    private async Task<(
+        Dictionary<string, Dictionary<DateTime, List<Candle>>> Intraday,
+        Dictionary<string, List<Candle>> Daily)> FetchHistoricalDataAsync(
         List<Instrument> stocks,
         List<DateTime> tradingDays,
         IProgress<BacktestProgress>? progress = null,
@@ -210,6 +215,13 @@ public class BacktestOrchestrator
     {
         Console.WriteLine("Fetching historical data...");
         var stockData = new Dictionary<string, Dictionary<DateTime, List<Candle>>>();
+        var stockDailyData = new Dictionary<string, List<Candle>>();
+
+        // Daily data is only fetched when the active screener consumes it
+        // (e.g. GapFadeScreener). One range-fetch per stock vs. one per day.
+        var needDaily = _backtestEngine.RequiresDailyCandles;
+        var dailyFromDate = tradingDays.Count > 0 ? tradingDays.Min() : DateTime.Today;
+        var dailyToDate = tradingDays.Count > 0 ? tradingDays.Max() : DateTime.Today;
 
         for (int i = 0; i < stocks.Count; i++)
         {
@@ -234,6 +246,22 @@ public class BacktestOrchestrator
                 }
             }
 
+            if (needDaily)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var dailyCandles = await _cache.LoadOrFetchDailyRangeAsync(
+                    stock.SecurityId,
+                    dailyFromDate,
+                    dailyToDate,
+                    _config.ExchangeSegment,
+                    cancellationToken);
+                stockDailyData[stock.SecurityId] = dailyCandles;
+            }
+            else
+            {
+                stockDailyData[stock.SecurityId] = new List<Candle>();
+            }
+
             Console.Write($"\rProcessed {i + 1}/{stocks.Count} stocks");
 
             progress?.Report(new BacktestProgress(
@@ -251,12 +279,13 @@ public class BacktestOrchestrator
             });
         }
 
-        return stockData;
+        return (stockData, stockDailyData);
     }
 
     private async Task<List<Trade>> ExecuteBacktestAsync(
         List<Instrument> stocks,
         Dictionary<string, Dictionary<DateTime, List<Candle>>> stockData,
+        Dictionary<string, List<Candle>> stockDailyData,
         List<DateTime> backtestDays,
         List<DateTime> allTradingDays,
         IProgress<BacktestProgress>? progress = null,
@@ -288,9 +317,9 @@ public class BacktestOrchestrator
                 // Get current day's candles for trade simulation
                 var currentDayCandles = stockData[stock.SecurityId][day];
 
-                // Get historical candles for screener's average calculation (last 10 days BEFORE current day)
+                // Get historical candles for screener's average calculation (pre-roll days BEFORE current day)
                 var historicalCandles = new List<Candle>();
-                foreach (var date in allTradingDays.Where(d => d < day).OrderByDescending(d => d).Take(10))
+                foreach (var date in allTradingDays.Where(d => d < day).OrderByDescending(d => d).Take(_backtestEngine.RequiredHistoricalDays))
                 {
                     if (stockData[stock.SecurityId].ContainsKey(date))
                     {
@@ -302,11 +331,20 @@ public class BacktestOrchestrator
                 var allCandles = new List<Candle>(historicalCandles);
                 allCandles.AddRange(currentDayCandles);
 
+                // Daily candles for screeners that need them — strictly before `day`
+                List<Candle>? dailyForToday = null;
+                if (_backtestEngine.RequiresDailyCandles &&
+                    stockDailyData.TryGetValue(stock.SecurityId, out var allDaily))
+                {
+                    dailyForToday = allDaily.Where(c => c.Timestamp.Date < day.Date).ToList();
+                }
+
                 var trade = _backtestEngine.BacktestDay(
                     stock.TradingSymbol,
                     stock.SecurityId,
                     day,
-                    allCandles);
+                    allCandles,
+                    dailyForToday);
 
                 if (trade != null)
                 {

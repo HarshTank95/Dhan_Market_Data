@@ -37,7 +37,22 @@ public class TradingCalendarService
         new DateTime(2026, 10, 9),  // Dussehra
         new DateTime(2026, 10, 24), // Diwali Laxmi Pujan
         new DateTime(2026, 11, 13), // Guru Nanak Jayanti
-        new DateTime(2026, 12, 25)  // Christmas
+        new DateTime(2026, 12, 25), // Christmas
+
+        // 2027 Holidays (approximate - update when official NSE calendar is released)
+        new DateTime(2027, 1, 26),  // Republic Day
+        new DateTime(2027, 2, 21),  // Maha Shivaratri (estimated)
+        new DateTime(2027, 3, 11),  // Eid-ul-Fitr (estimated)
+        new DateTime(2027, 3, 19),  // Mahavir Jayanti (estimated)
+        new DateTime(2027, 3, 26),  // Good Friday
+        new DateTime(2027, 4, 14),  // Dr. Ambedkar Jayanti
+        new DateTime(2027, 5, 17),  // Eid-ul-Adha (estimated)
+        new DateTime(2027, 8, 16),  // Independence Day observance (15th is Sunday)
+        new DateTime(2027, 9, 5),   // Ganesh Chaturthi (estimated)
+        new DateTime(2027, 10, 7),  // Dussehra (estimated)
+        new DateTime(2027, 11, 5),  // Diwali Laxmi Pujan (estimated)
+        new DateTime(2027, 12, 3),  // Guru Nanak Jayanti (estimated)
+        // Christmas 2027 falls on Saturday — already excluded by weekend rule
     };
 
     public List<DateTime> GetLastTradingDays(int count)

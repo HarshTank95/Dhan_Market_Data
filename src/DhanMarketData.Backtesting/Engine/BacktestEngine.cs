@@ -18,6 +18,12 @@ public class BacktestEngine
         _tradingConfig = tradingConfig ?? new TradingConfig();
     }
 
+    /// <summary>How many prior trading days of context this engine's screener needs.</summary>
+    public int RequiredHistoricalDays => _screener.RequiredHistoricalDays;
+
+    /// <summary>Whether this engine's screener consumes daily candles in addition to intraday.</summary>
+    public bool RequiresDailyCandles => _screener.RequiresDailyCandles;
+
     // Convert IST time from config to UTC for comparison with candle timestamps
     private TimeSpan IstToUtc(TimeSpan istTime)
     {
@@ -26,8 +32,17 @@ public class BacktestEngine
     }
 
     public Trade? BacktestDay(string symbol, string securityId, DateTime date, List<Candle> candles)
+        => BacktestDay(symbol, securityId, date, candles, dailyCandles: null);
+
+    public Trade? BacktestDay(
+        string symbol,
+        string securityId,
+        DateTime date,
+        List<Candle> candles,
+        List<Candle>? dailyCandles)
     {
-        if (!_screener.MeetsConditions(candles, out var signalCandles))
+        var context = new ScreenerContext(candles, dailyCandles);
+        if (!_screener.MeetsConditions(context, out var signalCandles))
             return null;
 
         // Convert IST config times to UTC for comparison
