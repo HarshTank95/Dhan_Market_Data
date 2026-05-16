@@ -39,12 +39,23 @@ public class InstrumentService
             if (cols.Length < 16)
                 continue;
 
+            // SEM_EXPIRY_DATE (col 8) is "" for cash/index rows, "yyyy-MM-dd HH:mm:ss"
+            // for derivatives. TryParse silently coerces invalids -> null.
+            DateTime? expiry = null;
+            if (!string.IsNullOrWhiteSpace(cols[8]) &&
+                DateTime.TryParse(cols[8], out var parsedExpiry))
+            {
+                expiry = parsedExpiry;
+            }
+
             _instruments.Add(new Instrument
             {
                 Exchange = cols[0],                // SEM_EXM_EXCH_ID
                 Segment = cols[1],                 // SEM_SEGMENT
                 InstrumentId = int.Parse(cols[2]), // SEM_SMST_SECURITY_ID
+                InstrumentType = cols[3],          // SEM_INSTRUMENT_NAME — EQUITY/FUTSTK/...
                 TradingSymbol = cols[5],            // SEM_TRADING_SYMBOL
+                Expiry = expiry,                    // SEM_EXPIRY_DATE
                 CompanyName = cols[15]              // SM_SYMBOL_NAME
             });
         }
@@ -85,5 +96,63 @@ public class InstrumentService
     public List<Instrument> GetAllNseEquities(int limit)
     {
         return GetInstrumentsBySegment("NSE_EQ", limit);
+    }
+
+    /// <summary>
+    /// NSE equities that have at least one corresponding FUTSTK contract
+    /// in the loaded instruments (i.e. F&O-eligible). Phase 9B addition
+    /// for the RVOL+ORB+OI strategy's ~180-name universe.
+    ///
+    /// Match is by TradingSymbol equality. Equities whose every FUTSTK
+    /// contract has already expired before today are excluded.
+    /// </summary>
+    public List<Instrument> GetFnoEligibleEquities(int limit)
+    {
+        var today = DateTime.Today;
+        var fnoSymbols = _instruments
+            .Where(i => i.InstrumentType == "FUTSTK"
+                        && i.Exchange == "NSE"
+                        && i.Expiry.HasValue && i.Expiry.Value.Date >= today)
+            .Select(i => i.TradingSymbol)
+            .Select(s =>
+            {
+                // FUT symbols look like "RELIANCE-May2026-FUT" — peel back to underlying "RELIANCE".
+                var dash = s.IndexOf('-');
+                return dash > 0 ? s.Substring(0, dash) : s;
+            })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return _instruments
+            .Where(i => i.ExchangeSegment == "NSE_EQ" && fnoSymbols.Contains(i.TradingSymbol))
+            .Take(limit)
+            .ToList();
+    }
+
+    /// <summary>
+    /// All FUTSTK contracts for an underlying, sorted by expiry ascending.
+    /// Used by FuturesContractResolver to pick the near-month contract.
+    /// </summary>
+    public List<Instrument> GetFuturesContracts(string equitySymbol)
+    {
+        return _instruments
+            .Where(i => i.InstrumentType == "FUTSTK"
+                        && i.Exchange == "NSE"
+                        && i.Expiry.HasValue
+                        && i.TradingSymbol.StartsWith($"{equitySymbol}-", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(i => i.Expiry!.Value)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Index instruments (IDX_I segment) by trading symbol. Used by the
+    /// regime breaker to find Nifty 50 / India VIX security IDs.
+    /// </summary>
+    public Instrument? GetIndex(string tradingSymbol)
+    {
+        return _instruments.FirstOrDefault(i =>
+            i.InstrumentType == "INDEX"
+            && i.Exchange == "NSE"
+            && string.Equals(i.TradingSymbol, tradingSymbol, StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -40,6 +40,7 @@ builder.Services.AddSingleton<IScreenerRegistry, ScreenerRegistry>();
 builder.Services.AddSingleton<IStrategyRegistry, StrategyRegistry>();
 builder.Services.AddSingleton<ScripMasterDownloader>();
 builder.Services.AddSingleton<InstrumentService>();
+builder.Services.AddSingleton<FuturesContractResolver>();
 builder.Services.AddSingleton<TradingCalendarService>();
 builder.Services.AddSingleton<ReportService>();
 builder.Services.AddSingleton<ITokenProtector, DpapiTokenProtector>();

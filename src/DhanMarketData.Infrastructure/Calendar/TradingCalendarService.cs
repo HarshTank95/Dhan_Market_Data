@@ -59,7 +59,7 @@ public class TradingCalendarService
     {
         var days = new List<DateTime>();
         var current = DateTime.Today;
-        
+
         while (days.Count < count)
         {
             if (IsTradingDay(current))
@@ -68,8 +68,22 @@ public class TradingCalendarService
             }
             current = current.AddDays(-1);
         }
-        
+
         return days;
+    }
+
+    /// <summary>
+    /// Returns the most recent trading day strictly before <paramref name="date"/>.
+    /// Walks backward through weekends and known holidays.
+    /// </summary>
+    public DateTime GetPreviousTradingDay(DateTime date)
+    {
+        var d = date.Date.AddDays(-1);
+        while (!IsTradingDay(d))
+        {
+            d = d.AddDays(-1);
+        }
+        return d;
     }
 
     public bool IsTradingDay(DateTime date)

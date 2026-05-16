@@ -381,6 +381,108 @@ public class HistoricalDataCache
         }
     }
 
+    /// <summary>
+    /// Fetch intraday INDEX candles (IDX_I segment) — used for Nifty 50 /
+    /// India VIX in the regime breaker. No OI on indices.
+    ///
+    /// Distinct cache namespace IDX_I/ so index data doesn't share folders
+    /// with NSE_EQ or NSE_FNO.
+    /// </summary>
+    public async Task<List<Candle>> LoadOrFetchIndexAsync(
+        string securityId,
+        DateTime date,
+        string timeframe = "15min",
+        TimeSpan? marketOpen = null,
+        TimeSpan? marketClose = null,
+        CancellationToken ct = default)
+    {
+        if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
+            return new List<Candle>();
+
+        const string cacheNamespace = "IDX_I";
+        var securityFolder = Path.Combine(_cacheDirectory, cacheNamespace, timeframe, securityId);
+        var fileName = $"{date:yyyy-MM-dd}.json";
+        var filePath = Path.Combine(securityFolder, fileName);
+
+        var cacheKey = $"{cacheNamespace}_{timeframe}_{securityId}_{date:yyyy-MM-dd}";
+
+        if (_memoryCache.TryGetValue(cacheKey, out var cachedCandles))
+            return cachedCandles;
+
+        if (_missingDataCache.Contains(cacheKey))
+            return new List<Candle>();
+
+        if (File.Exists(filePath))
+        {
+            var json = await File.ReadAllTextAsync(filePath, ct);
+            var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
+            if (candles.Count == 0)
+            {
+                _missingDataCache.Add(cacheKey);
+                return candles;
+            }
+            AddToMemoryCache(cacheKey, candles);
+            return candles;
+        }
+
+        Directory.CreateDirectory(securityFolder);
+
+        try
+        {
+            string interval = timeframe switch
+            {
+                "1min" => "1",
+                "5min" => "5",
+                "15min" => "15",
+                "25min" => "25",
+                "60min" => "60",
+                "1hour" => "60",
+                _ => throw new ArgumentException(
+                    $"Unsupported timeframe '{timeframe}' for index fetch.")
+            };
+
+            var candles = await _apiClient.GetIntradayCandlesAsync(
+                securityId,
+                date,
+                interval,
+                cacheNamespace,            // exchangeSegment = "IDX_I"
+                marketOpen,
+                marketClose,
+                instrument: "INDEX",
+                oi: false,
+                ct: ct);
+
+            if (candles.Count == 0)
+            {
+                await File.WriteAllTextAsync(filePath, "[]", ct);
+                _missingDataCache.Add(cacheKey);
+                return new List<Candle>();
+            }
+
+            var jsonData = JsonSerializer.Serialize(candles, new JsonSerializerOptions { WriteIndented = false });
+            await File.WriteAllTextAsync(filePath, jsonData, ct);
+            AddToMemoryCache(cacheKey, candles);
+            return candles;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (!ex.Message.Contains("status code"))
+            {
+                _errorLogger.LogError(
+                    "HistoricalDataCache.LoadOrFetchIndexAsync",
+                    $"Error fetching index data for security {securityId} on {date:yyyy-MM-dd}",
+                    ex);
+            }
+            await File.WriteAllTextAsync(filePath, "[]", ct);
+            _missingDataCache.Add(cacheKey);
+            return new List<Candle>();
+        }
+    }
+
     private void AddToMemoryCache(string key, List<Candle> candles)
     {
         // LRU cache: if full, remove oldest entry
