@@ -72,6 +72,59 @@ public class DhanDataApiClient
         return await response.Content.ReadAsStringAsync();
     }
 
+    /// <summary>
+    /// Fetch DAILY candles over a date range in a single API call.
+    /// Uses the v2/charts/historical endpoint with interval="D".
+    /// Returns parsed candles (vs. the older string-returning overload).
+    /// </summary>
+    public async Task<List<Candle>> GetDailyHistoricalAsync(
+        string securityId,
+        DateTime fromDate,
+        DateTime toDate,
+        string exchangeSegment = "NSE_EQ",
+        CancellationToken ct = default)
+    {
+        await ApplyRateLimitAsync(ct);
+
+        var payload = new
+        {
+            securityId = securityId,
+            exchangeSegment = exchangeSegment,
+            instrument = "EQUITY",
+            interval = "D",
+            fromDate = fromDate.ToString("yyyy-MM-dd"),
+            toDate = toDate.ToString("yyyy-MM-dd")
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var endpoint = "v2/charts/historical";
+        var response = await _httpClient.PostAsync(endpoint, content, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(ct);
+
+            // DH-905: No data available (delisted/suspended/no trading)
+            if (errorContent.Contains("DH-905"))
+            {
+                return new List<Candle>();
+            }
+
+            _errorLogger.LogError(
+                "DhanDataApiClient.GetDailyHistoricalAsync",
+                $"API Error: {response.StatusCode}\nSecurity: {securityId}, Range: {fromDate:yyyy-MM-dd} → {toDate:yyyy-MM-dd}\nResponse: {errorContent}\nRequest: {json}"
+            );
+            response.EnsureSuccessStatusCode();
+        }
+
+        var responseContent = await response.Content.ReadAsStringAsync(ct);
+        var historicalData = JsonSerializer.Deserialize<DhanHistoricalResponse>(responseContent);
+
+        return historicalData?.ToCandles() ?? new List<Candle>();
+    }
+
     public async Task<List<Candle>> GetIntradayCandlesAsync(
         string securityId,
         DateTime date,
@@ -89,14 +142,18 @@ public class DhanDataApiClient
         var fromDate = date.Date.Add(openTime);
         var toDate = date.Date.Add(closeTime);
 
+        // Dhan's intraday endpoint requires full "yyyy-MM-dd HH:mm:ss" datetimes
+        // (per https://dhanhq.co/docs/v2/historical-data/). Sending date-only
+        // returns DH-905 "Input_Exception". The daily endpoint is the opposite:
+        // it wants date-only — see GetDailyHistoricalAsync above.
         var payload = new
         {
             securityId = securityId,
             exchangeSegment = exchangeSegment,
             instrument = "EQUITY",
             interval = interval,
-            fromDate = fromDate.ToString("yyyy-MM-dd"),
-            toDate = toDate.ToString("yyyy-MM-dd")
+            fromDate = fromDate.ToString("yyyy-MM-dd HH:mm:ss"),
+            toDate = toDate.ToString("yyyy-MM-dd HH:mm:ss")
         };
 
         var json = JsonSerializer.Serialize(payload);
