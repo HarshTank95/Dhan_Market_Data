@@ -2,6 +2,7 @@ using DhanMarketData.Core.Models;
 using DhanMarketData.Configs;
 using DhanMarketData.Infrastructure.Caching;
 using DhanMarketData.Infrastructure.Data;
+using DhanMarketData.Infrastructure.Quotes;
 using DhanMarketData.Calendar;
 using DhanMarketData.Backtest.Reports;
 
@@ -336,10 +337,41 @@ public class BacktestOrchestrator
         var allTrades = new List<Trade>();
         var dayIndex = 0;
 
+        // Pre-create the regime breaker if the active screener wants it.
+        // Constructed once and reused across days so its internal services
+        // can benefit from any caching they do (none today, but room to add).
+        var needRegime = _backtestEngine.RequiresRegimeBreaker;
+        var regimeBreaker = needRegime
+            ? new RegimeBreakerService(_instrumentService, _cache, _calendar)
+            : null;
+        var maxVix = _backtestEngine.MaxVixThreshold;
+        var maxGapPct = _backtestEngine.MaxNiftyGapPctThreshold;
+        var regimeSkipCount = 0;
+
         foreach (var day in backtestDays)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var dayTrades = new List<Trade>();
+
+            // Day-level regime check (spec §4.2). Skip the entire day's stocks
+            // if India VIX is too high or Nifty pre-open gap is too wide.
+            // Falls open on missing index data so a cache gap doesn't kill
+            // the whole backtest.
+            if (regimeBreaker is not null)
+            {
+                var tradeable = await regimeBreaker.IsDayTradeableAsync(
+                    day, maxVix, maxGapPct,
+                    allowOnMissingData: true,
+                    ct: cancellationToken);
+                if (!tradeable)
+                {
+                    regimeSkipCount++;
+                    Console.WriteLine($"  Day {day:yyyy-MM-dd} skipped (regime breaker: VIX≥{maxVix} or |NiftyGap%|>{maxGapPct})");
+                    _report.PrintDailySummary(day, dayTrades);
+                    dayIndex++;
+                    continue;
+                }
+            }
 
             foreach (var stock in stocks)
             {
@@ -418,6 +450,11 @@ public class BacktestOrchestrator
             allTrades.AddRange(dayTrades);
             _report.PrintDailySummary(day, dayTrades);
             dayIndex++;
+        }
+
+        if (needRegime && regimeSkipCount > 0)
+        {
+            Console.WriteLine($"\nRegime breaker: skipped {regimeSkipCount} day(s) for VIX/Nifty-gap exceedances.");
         }
 
         return allTrades;

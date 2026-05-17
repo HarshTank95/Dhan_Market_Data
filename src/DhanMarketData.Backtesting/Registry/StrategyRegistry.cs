@@ -59,7 +59,7 @@ public sealed class StrategyRegistry : IStrategyRegistry
             {
                 Key = "confluenceorblong",
                 DisplayName = "Volume Confluence Breakout (Long)",
-                Description = "Stop-market at OR.High after 09:30, ATR×0.15 stop, no profit target, time exit 14:30. Day-of-week sizing tilt; size scaled by screener confluence weight (1.0 long buildup / 0.5 short covering).",
+                Description = "Stop-market at OR.High after 09:30, ATR×0.15 stop, no profit target, time exit 14:30. Day-of-week sizing tilt; size scaled by screener confluence weight (1.0 long buildup / 0.5 short covering). Net of estimated 0.10% round-trip cost per spec §12. v1 deviations: per-stock MinScoreThreshold substitutes cross-stock top-N ranking (spec §5.3); 5-min timeframe is required because OI delta needs multi-candle OR; long-only (Trade.Direction migration deferred).",
                 ConfigClassName = nameof(ConfluenceOrbStrategyConfig),
                 Fields = ConfigSchemaReflector.ExtractFields(typeof(ConfluenceOrbStrategyConfig)),
             },

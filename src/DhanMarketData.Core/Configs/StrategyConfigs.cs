@@ -86,4 +86,10 @@ public class ConfluenceOrbStrategyConfig
                  Description = "Sizing multiplier on Fridays (historically strongest day per 8-yr data — 40% of total profit).",
                  Group = "Day-of-Week Sizing", Kind = ConfigFieldKind.Multiplier, Min = 0, Max = 3, Step = 0.1, Unit = "x", Order = 4)]
     public decimal DayMultiplierFri { get; set; } = 1.5m;
+
+    // ── Cost model (spec §12) ────────────────────────────────────────
+    [ConfigField(Label = "Cost Model RT %",
+                 Description = "Round-trip cost as % of leg notional (brokerage + STT + exchange + GST + stamp + slippage). Per Zerodha equity MIS May 2026: ~0.079% charges + 0.02% slippage = ~0.10% total. Set to 0 to compute gross-of-cost PnL.",
+                 Group = "Cost Model", Kind = ConfigFieldKind.Percent, Min = 0, Max = 1, Step = 0.01, Order = 0)]
+    public decimal CostModelRoundTripPct { get; set; } = 0.10m;
 }

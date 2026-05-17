@@ -47,6 +47,9 @@ public class RvolOrbScreener : IScreener
     public int RequiredHistoricalDays => _config.MinHistoricalDays;
     public bool RequiresDailyCandles => true;
     public bool RequiresFuturesCandles => true;
+    public bool RequiresRegimeBreaker => true;
+    public decimal MaxVixThreshold => _config.SkipDayIfIndiaVixAbove;
+    public decimal MaxNiftyGapPctThreshold => _config.SkipDayIfNiftyGapPct;
 
     public RvolOrbScreener(RvolOrbConfig? config = null)
     {

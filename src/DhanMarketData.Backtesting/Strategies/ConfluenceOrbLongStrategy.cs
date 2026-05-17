@@ -176,6 +176,18 @@ public class ConfluenceOrbLongStrategy : IStrategy
         DateTime entryTime, decimal entryPrice, int qty,
         decimal stopLoss, DateTime exitTime, decimal exitPrice, string exitReason)
     {
+        // Gross P&L before brokerage / STT / exchange / GST / stamp / slippage.
+        var grossPnL = (exitPrice - entryPrice) * qty;
+
+        // Spec §12 cost model: ~0.10% round-trip on leg notional.
+        // Formula: cost ≈ avg_leg_notional × CostModelRoundTripPct%
+        //                = ((entry + exit) / 2) × qty × pct / 100
+        //                = (entry + exit) × qty × pct / 200
+        // CostModelRoundTripPct = 0 cleanly produces the original gross-of-cost
+        // PnL for users who want to compare against legacy strategies.
+        var cost = (entryPrice + exitPrice) * qty * _stratConfig.CostModelRoundTripPct / 200m;
+        var netPnL = grossPnL - cost;
+
         return new Trade
         {
             Symbol      = symbol,
@@ -189,8 +201,8 @@ public class ConfluenceOrbLongStrategy : IStrategy
             ExitTime    = exitTime,
             ExitPrice   = exitPrice,
             ExitReason  = exitReason,
-            PnL         = (exitPrice - entryPrice) * qty,
-            PnLPercent  = entryPrice != 0 ? (exitPrice - entryPrice) / entryPrice * 100m : 0m,
+            PnL         = netPnL,              // Net of estimated transaction costs
+            PnLPercent  = entryPrice != 0 ? netPnL / (entryPrice * qty) * 100m : 0m,
         };
     }
 

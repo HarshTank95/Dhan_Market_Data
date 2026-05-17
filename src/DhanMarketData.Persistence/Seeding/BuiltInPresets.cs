@@ -186,7 +186,7 @@ public static class BuiltInPresets
         {
             Id = 6,
             Name = "Volume Confluence Breakout (Long)",
-            Description = "15-min ORB on F&O-eligible NSE stocks, filtered by cash RVOL and confirmed by futures OI direction. Long buildup = full size; short covering = half size.",
+            Description = "15-min ORB on F&O-eligible NSE stocks, filtered by cash RVOL and confirmed by futures OI direction. Long buildup = full size; short covering = half size. v1 uses 5-min timeframe (15-min OI delta requires multi-candle OR), MinScoreThreshold instead of cross-stock top-N ranking, and includes spec §12 cost model (0.10% RT).",
             IsBuiltIn = true,
             ScreenerType = "rvolorb",
             StrategyType = "confluenceorblong",
@@ -219,7 +219,8 @@ public static class BuiltInPresets
                   "DayMultiplierTue": 0.5,
                   "DayMultiplierWed": 0.8,
                   "DayMultiplierThu": 1.2,
-                  "DayMultiplierFri": 1.5
+                  "DayMultiplierFri": 1.5,
+                  "CostModelRoundTripPct": 0.10
                 }
                 """,
             // Custom TradingConfig (NOT the shared one) — RVOL+ORB+OI is a

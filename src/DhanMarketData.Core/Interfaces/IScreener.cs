@@ -78,6 +78,29 @@ public interface IScreener
     bool RequiresFuturesCandles => false;
 
     /// <summary>
+    /// Whether this screener requires a day-level regime check (India VIX
+    /// + Nifty pre-open gap) before per-stock processing. When true, the
+    /// orchestrator calls RegimeBreakerService.IsDayTradeableAsync before
+    /// iterating stocks for that day; if false, the entire day is skipped
+    /// and the screener is never invoked.
+    /// </summary>
+    bool RequiresRegimeBreaker => false;
+
+    /// <summary>
+    /// India VIX threshold for the day-level regime check. If VIX at day
+    /// open is at or above this value, the day is skipped. Default 25.0
+    /// per spec §4.2.
+    /// </summary>
+    decimal MaxVixThreshold => 25m;
+
+    /// <summary>
+    /// Nifty 50 pre-open gap threshold (%). If |today.open - prev.close|
+    /// as a % of prev close exceeds this, the day is skipped. Default 2.0
+    /// per spec §4.2.
+    /// </summary>
+    decimal MaxNiftyGapPctThreshold => 2m;
+
+    /// <summary>
     /// Checks if the given candles meet the screening conditions
     /// </summary>
     /// <param name="allCandles">All historical candles for analysis (includes historical + current day)</param>

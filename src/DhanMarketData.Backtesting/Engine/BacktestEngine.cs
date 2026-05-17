@@ -27,6 +27,15 @@ public class BacktestEngine
     /// <summary>Whether this engine's screener consumes intraday F&amp;O futures candles with OI.</summary>
     public bool RequiresFuturesCandles => _screener.RequiresFuturesCandles;
 
+    /// <summary>Whether this engine's screener wants the day-level regime check (VIX + Nifty gap).</summary>
+    public bool RequiresRegimeBreaker => _screener.RequiresRegimeBreaker;
+
+    /// <summary>VIX threshold the orchestrator uses when running the regime check.</summary>
+    public decimal MaxVixThreshold => _screener.MaxVixThreshold;
+
+    /// <summary>Nifty pre-open gap threshold (%) the orchestrator uses when running the regime check.</summary>
+    public decimal MaxNiftyGapPctThreshold => _screener.MaxNiftyGapPctThreshold;
+
     // Convert IST time from config to UTC for comparison with candle timestamps
     private TimeSpan IstToUtc(TimeSpan istTime)
     {
