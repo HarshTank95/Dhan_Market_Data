@@ -133,6 +133,16 @@ public class BacktestOrchestrator
                 Trade: null,
                 Day: null));
 
+            // Per-chunk + cumulative scoreboard so multi-chunk runs show
+            // trend live without having to wait for the final summary.
+            var chunkPnL = chunkTrades.Sum(t => t.PnL);
+            var cumPnL = allTrades.Sum(t => t.PnL);
+            var chunkWinners = chunkTrades.Count(t => t.PnL > 0);
+            Console.WriteLine(
+                $"Chunk {chunkNumber} stats: Trades={chunkTrades.Count} " +
+                $"(W={chunkWinners}/{chunkTrades.Count}), " +
+                $"P&L=₹{chunkPnL:N2}, Cumulative={allTrades.Count} trades, ₹{cumPnL:N2}");
+
             // Clear memory before next chunk
             stockData.Clear();
             stockDailyData.Clear();
@@ -222,9 +232,24 @@ public class BacktestOrchestrator
         var stockFuturesData = new Dictionary<string, Dictionary<DateTime, List<Candle>>>();
 
         // Daily data is only fetched when the active screener consumes it
-        // (e.g. GapFadeScreener). One range-fetch per stock vs. one per day.
+        // (e.g. GapFadeScreener, RvolOrbScreener). One range-fetch per stock
+        // vs. one per day.
+        //
+        // Pre-roll the start by RequiredHistoricalDays so the screener has
+        // the lookback its MinHistoricalDays check expects. RequiredHistoricalDays
+        // counts TRADING days; multiply by 7/5 + a safety margin to convert
+        // to calendar days for the cache call. Without this, screeners with
+        // MinHistoricalDays larger than the chunk length drop every
+        // evaluation at the "no daily data" step (Phase 9F bug — funnel
+        // diagnostics showed 99% drops on a 30-day chunk for a screener
+        // wanting 28 days of history).
         var needDaily = _backtestEngine.RequiresDailyCandles;
-        var dailyFromDate = tradingDays.Count > 0 ? tradingDays.Min() : DateTime.Today;
+        var preRollCalendarDays = needDaily
+            ? (int)Math.Ceiling(_backtestEngine.RequiredHistoricalDays * 7.0 / 5.0) + 5
+            : 0;
+        var dailyFromDate = tradingDays.Count > 0
+            ? tradingDays.Min().AddDays(-preRollCalendarDays)
+            : DateTime.Today;
         var dailyToDate = tradingDays.Count > 0 ? tradingDays.Max() : DateTime.Today;
 
         // Futures-with-OI data is only fetched when the active screener
@@ -455,6 +480,17 @@ public class BacktestOrchestrator
         if (needRegime && regimeSkipCount > 0)
         {
             Console.WriteLine($"\nRegime breaker: skipped {regimeSkipCount} day(s) for VIX/Nifty-gap exceedances.");
+        }
+
+        // Filter-funnel diagnostics — no-op for screeners that don't override.
+        if (backtestDays.Count > 0)
+        {
+            var first = backtestDays[0].ToString("yyyy-MM-dd");
+            var last  = backtestDays[^1].ToString("yyyy-MM-dd");
+            var chunkLabel = totalChunks > 0
+                ? $"Chunk {currentChunk}/{totalChunks}: {first} → {last}"
+                : $"{first} → {last}";
+            _backtestEngine.LogScreenerDiagnostics(chunkLabel);
         }
 
         return allTrades;

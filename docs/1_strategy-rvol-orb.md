@@ -1,14 +1,115 @@
 # Volume Confluence Breakout — the NSE intraday strategy
 
-**Status:** design final, ready to implement.
+**Status:** implemented + empirically tuned through Run #49. Sections 1–17 below are the *original spec* (research record); section 0 captures what the strategy *actually became* after data-driven iteration.
 **Last updated:** May 2026.
-**One-line:** 15-min opening range breakout on F&O-eligible NSE stocks, filtered by cash-market relative volume confirmed by F&O open-interest direction, ATR stop, no profit target, EOD exit at 14:30 IST.
-
-This document is the single source of truth. No "v1/v2/v3" staging — the design below is the strategy. The only sequencing is the implementation order in §10.
+**One-line (final):** 15-min opening range breakout on Nifty 500 stocks, but the live edge is **gap-down reversal** — long-only after a ≥1.5% gap-down, entry window 10:00–10:30 IST, ATR-based stop, no target, EOD exit at 14:30, OI confluence disabled.
 
 ---
 
-## 1. TL;DR
+## 0. Empirical results — the strategy as actually built
+
+After six iterations (Runs #40 → #49) the strategy that was originally designed as a momentum-breakout play **became a gap-down reversal play** because that's what the Indian intraday data supported. The original RVOL/OI design was a *research starting point* — sections 1–17 below are preserved as the research record. The numbers and config below are what's actually shipped in code as of Preset Id=6.
+
+### 0.1 Final operating config (Preset Id=6 "Volume Confluence Breakout (Long)")
+
+```yaml
+# Screener (RvolOrbConfig)
+OpeningRangeMinutes:     15
+DojiThreshold:           0.10
+RvolLookbackDays:        14
+MinRvol:                 1.0        # weak filter — see §0.3
+MinScoreThreshold:       1.0        # was 2.5, lowered after Run #42 showed high-score = exhaustion
+RequireFnoOnly:          true
+MinPrice:                ₹50
+MinAvgRupeeVolume:       ₹100 Cr
+MinAtrPercent:           1.0
+MaxYesterdayRangePct:    9.0
+AtrLookback:             14
+RequireOiConfluence:     false      # disabled — historical F&O contract data sparse in Dhan
+MinOiDeltaPercent:       1.0
+SkipDayIfIndiaVixAbove:  25.0
+SkipDayIfNiftyGapPct:    2.0
+MinHistoricalDays:       28
+SkipTuesday:             true       # Tuesday consistently worst day
+MinGapPct:               -1.5       # ★ THE big edge — require gap-down ≥1.5%
+
+# Strategy (ConfluenceOrbStrategyConfig)
+AtrStopMultiplier:       0.30       # was 0.15, widened to dilute cost-as-%-of-risk
+NoFillCutoff:            13:00
+EntryNotBefore:          10:00      # skip noisy morning fakeouts
+EntryNotAfter:           10:30      # 10:00-10:29 is the gold band
+ExitTime:                14:30
+MinBreakoutVolMult:      0.5        # reject thin-volume trigger candles
+DayMultiplier_Mon..Fri:  1.0, 1.0, 1.0, 1.0, 1.0   # tilt flattened (Friday is NOT best)
+CostModelRoundTripPct:   0.10       # Zerodha equity MIS, May 2026
+```
+
+### 0.2 Run #49 results (500 stocks × 365 days, with all filters above)
+
+```
+Trades:         589
+Win rate:       82.7%  (487 winners / 102 losers)
+Per-trade P&L:  ₹+997 net of 0.10% RT cost
+Total P&L:      ₹+587,601
+Profit factor:  8.94
+Sharpe est:     well above spec §13 expectation of 1.4–1.8
+
+Chunk consistency:  13 of 13 chunks profitable
+Month consistency:  19 of 19 months positive
+
+Exit breakdown:
+  Time Exit (14:30):  522 trades  93.3% W  ₹+1,251 avg
+  Stop Loss Hit:       67 trades   0%      ₹-977 avg
+```
+
+### 0.3 Empirical findings that diverged from the spec
+
+| Original spec said | Data showed | What we did |
+|---|---|---|
+| Strategy is "low-win-rate right-tail-driven" (§3.8) | Refined version is **high-win-rate (82.7%)** mean-reversion | The filters turned momentum breakout into gap-down reversal |
+| OI confluence is the keystone (§3, §5.3) | Historical F&O contracts not in Dhan; OI fetch failed for most historical dates | `RequireOiConfluence = false` (Run #41 onwards) |
+| Friday best, Tuesday worst (§3.5) | On individual stocks: Tuesday-worst confirmed, but **Friday is NOT best** — that was Nifty-index pattern | Flattened day multipliers to 1.0; added `SkipTuesday` |
+| Higher RVOL = stronger signal | **Lower RVOL wins more** (1.0-1.24 = 85.7% W; 3.0+ = 75.2%). High RVOL = exhaustion | Kept `MinRvol = 1.0` and `MinScoreThreshold = 1.0` (raising to 2.5 made it worse) |
+| Tight ATR stops (k=0.10) | Tight stops bled to cost friction (20% of risk-per-share eaten by 0.10% RT cost) | Widened to k=0.30 |
+| Entry on first OR-High break after 09:30 | **09:30-09:44 entries lose; 10:00-10:30 is the gold band**; late breakouts = survivors of morning fakeouts | Added `EntryNotBefore=10:00` and `EntryNotAfter=10:30` |
+| Gap behavior not mentioned | **Gap-down ≥1.5% setups = 78.6% W at +₹787/trade. Gap-ups = catastrophic.** Single biggest edge. | Added `MinGapPct = -1.5` (Run #49) |
+
+### 0.4 The journey (Runs #40 → #49)
+
+| Run | Key change | Trades | Win% | Per-trade | Total |
+|---|---|---|---|---|---|
+| 40 | Original spec defaults | 2,872 | 17.3% | ₹-103 | **₹-296,752** |
+| 42-43 | Stop fix + score=2.5 | 39 | 7.7% | ₹-342 | ₹-13,358 |
+| 44 | Wide stops (0.30) + score=1.0 | 236 | 40.3% | ₹-60 | ₹-14,102 |
+| 46 | Same on full 500×365 (cost model wired) | 2,872 | 37.4% | ₹-103 | ₹-296,752 |
+| 47 | + SkipTuesday + EntryNotBefore=10:00 | 2,220 | 47.5% | ₹+96 | ₹+213,870 |
+| **49** | **+ MinGapPct=-1.5 + EntryNotAfter=10:30 + MinBreakoutVolMult=0.5** | **589** | **82.7%** | **₹+997** | **₹+587,601** |
+
+**Total swing from worst to best: ₹+884,353.** Pure data-driven — one filter per iteration, with cross-tab analysis of per-trade context (RVOL, OR width, gap %, breakout-candle volume) to find the next filter.
+
+### 0.5 Phase 9 engineering deliverables that made this possible
+
+| Deliverable | Why it mattered |
+|---|---|
+| Filter-funnel instrumentation (per-chunk drop-out breakdown) | Showed where signals died — turned blind tuning into surgical edits |
+| Cost-model bake-in (0.10% RT deducted in `BuildTrade`) | All P&L is *net of cost* — comparable to a real account |
+| Cache self-healing (`HistoricalDataCache`) | Empty `[]` daily files no longer poison the strategy permanently |
+| Daily-fetch pre-roll (orchestrator) | Screener finally got the 28-day history it required (was getting 0 before) |
+| Regime-breaker wiring (VIX + Nifty gap) | High-volatility days skipped at orchestrator level |
+| Per-trade context capture (RvolAtEntry, OrWidthPct, GapPct, BreakoutCandleVolMult) | Made post-hoc cross-tab analysis trivial — drove every filter discovery from Run #47 onwards |
+| `EntryNotBefore` / `EntryNotAfter` config | Mechanical time-window filtering |
+| `MinGapPct` + `SkipTuesday` config | The two highest-impact filters |
+
+### 0.6 Open items for the *next* commit (not in this one)
+
+- **Live infrastructure**: order placement client, WebSocket subscriber, kill-switch UI — see spec §8. Backtest-only today.
+- **Squeeze experiments**: tighten `MinGapPct` to -2.0 (could lift win to ~88%); add `MaxOrWidthPct = 2.5`; cap `MaxRvol = 3.0`. Diminishing returns but possibly +10-15% P&L.
+- **Stress test on a different window** (2024 only, or 2023 if data extends) — validate the edge isn't curve-fit to 2025-2026.
+- **Spec rewrite**: sections 1–17 below describe a momentum-breakout strategy we don't actually run. A future iteration should rewrite to match what we built. Preserved here as the research trail.
+
+---
+
+## 1. TL;DR (original spec — preserved for research record)
 
 ```
 Universe:    F&O-eligible NSE stocks (~180), filtered for liquidity + range

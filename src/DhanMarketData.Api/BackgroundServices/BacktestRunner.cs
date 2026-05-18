@@ -218,6 +218,11 @@ public sealed class BacktestRunner : BackgroundService
         ExitReason = t.ExitReason,
         PnL = t.PnL,
         PnLPercent = t.PnLPercent,
+        // Phase 9I per-trade context
+        RvolAtEntry = t.RvolAtEntry,
+        OrWidthPct = t.OrWidthPct,
+        GapPct = t.GapPct,
+        BreakoutCandleVolMult = t.BreakoutCandleVolMult,
     };
 
     private static TradeRecordDto MapTradeDto(TradeRecord t) => new()
@@ -236,6 +241,10 @@ public sealed class BacktestRunner : BackgroundService
         ExitReason = t.ExitReason,
         PnL = t.PnL,
         PnLPercent = t.PnLPercent,
+        RvolAtEntry = t.RvolAtEntry,
+        OrWidthPct = t.OrWidthPct,
+        GapPct = t.GapPct,
+        BreakoutCandleVolMult = t.BreakoutCandleVolMult,
     };
 }
 

@@ -373,4 +373,23 @@ public class RvolOrbConfig
                  Description = "Daily-candle minimum for ATR + RVOL baselines (covers RvolLookbackDays + AtrLookback with cushion).",
                  Group = "General", Kind = ConfigFieldKind.Integer, Min = 14, Max = 100, Order = 0)]
     public int MinHistoricalDays { get; set; } = 28;
+
+    // ── Day-of-week filter (Phase 9I) ────────────────────────────────
+    // Empirical: across 2,872 trades on 500 NSE stocks × 365 days,
+    // Tuesday had the worst win rate (33.9%) and worst per-trade P&L
+    // (-₹147). Skipping it removes ~₹77k of losses on the test window.
+    [ConfigField(Label = "Skip Tuesday",
+                 Description = "Skip the entire trading day on Tuesdays (empirically the worst day for this strategy on Indian individual stocks).",
+                 Group = "Day Filter", Kind = ConfigFieldKind.Boolean, Order = 0)]
+    public bool SkipTuesday { get; set; } = true;
+
+    // ── Gap filter (Phase 9J) ─────────────────────────────────────────
+    // The massive find from Run #47: gap-downs ≥1.5% had 78.6% win rate
+    // and +₹787/trade. Gap-ups had near-0% win rate. The strategy is
+    // really a gap-down REVERSAL play disguised as ORB. Default value
+    // -1.5 means "today's open must be ≥1.5% below prior close".
+    [ConfigField(Label = "Min Gap %",
+                 Description = "Gap must be at or below this value (today's open vs prior close, %). Default -1.5 = require gap-down ≥1.5%. Empirically these setups produce 78% win rate; gap-ups and flat opens are catastrophic.",
+                 Group = "Gap Filter", Kind = ConfigFieldKind.Percent, Min = -20, Max = 20, Step = 0.1, Order = 0)]
+    public decimal MinGapPct { get; set; } = -1.5m;
 }

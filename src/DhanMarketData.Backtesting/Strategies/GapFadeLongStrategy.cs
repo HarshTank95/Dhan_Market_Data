@@ -176,13 +176,21 @@ public class GapFadeLongStrategy : IStrategy
         return null;
     }
 
-    private static Trade BuildTrade(
+    // Instance method (not static) so it can read _strategyConfig.CostModelRoundTripPct.
+    // Mirrors the cost-deduction logic in ConfluenceOrbLongStrategy.BuildTrade — see
+    // commit 83d3c73. Spec §12 cost model: ~0.10% RT on leg notional.
+    private Trade BuildTrade(
         string symbol, string securityId, DateTime date,
         Candle entryCandle, Candle exitCandle,
         decimal entryPrice, decimal exitPrice,
         decimal stopLoss, decimal target,
-        int quantity, string reason) =>
-        new()
+        int quantity, string reason)
+    {
+        var grossPnL = (exitPrice - entryPrice) * quantity;
+        var cost = (entryPrice + exitPrice) * quantity * _strategyConfig.CostModelRoundTripPct / 200m;
+        var netPnL = grossPnL - cost;
+
+        return new Trade
         {
             Symbol = symbol,
             SecurityId = securityId,
@@ -195,7 +203,8 @@ public class GapFadeLongStrategy : IStrategy
             Target = target,
             Quantity = quantity,
             ExitReason = reason,
-            PnL = (exitPrice - entryPrice) * quantity,
-            PnLPercent = ((exitPrice - entryPrice) / entryPrice) * 100m
+            PnL = netPnL,                                                                  // Net of estimated transaction costs
+            PnLPercent = entryPrice != 0 ? netPnL / (entryPrice * quantity) * 100m : 0m,
         };
+    }
 }

@@ -36,6 +36,9 @@ public class BacktestEngine
     /// <summary>Nifty pre-open gap threshold (%) the orchestrator uses when running the regime check.</summary>
     public decimal MaxNiftyGapPctThreshold => _screener.MaxNiftyGapPctThreshold;
 
+    /// <summary>Forwards to the active screener's diagnostic hook (filter-funnel etc.).</summary>
+    public void LogScreenerDiagnostics(string context) => _screener.LogDiagnostics(context);
+
     // Convert IST time from config to UTC for comparison with candle timestamps
     private TimeSpan IstToUtc(TimeSpan istTime)
     {
@@ -84,9 +87,12 @@ public class BacktestEngine
         // to the 6-arg version — again byte-identical for unchanged code
         // paths. RVOL+ORB+OI's strategy overrides this overload to consume
         // the ATR for its stop-distance math.
+        // Prefer the full-signal overload so strategies can write the
+        // rich context (RvolAtEntry, OrWidthPct, GapPct) onto Trade.
+        // Legacy strategies' default impl drops the extras and forwards.
         return _strategy.ExecuteTrade(
             symbol, securityId, date, candles,
-            signal.Candles, entryCandle, signal.SizingMultiplier, signal.Atr);
+            signal, entryCandle);
     }
 
     public void PrintSummary(List<Trade> trades)

@@ -53,6 +53,12 @@ public sealed class TradeRecordDto
     public string ExitReason { get; init; } = "";
     public decimal PnL { get; init; }
     public decimal PnLPercent { get; init; }
+
+    // Phase 9I per-trade context (nullable for legacy trades)
+    public decimal? RvolAtEntry { get; init; }
+    public decimal? OrWidthPct { get; init; }
+    public decimal? GapPct { get; init; }
+    public decimal? BreakoutCandleVolMult { get; init; }
 }
 
 public sealed class TradeListDto

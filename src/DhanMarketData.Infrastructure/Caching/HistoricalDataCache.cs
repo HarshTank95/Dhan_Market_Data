@@ -65,18 +65,37 @@ public class HistoricalDataCache
         if (File.Exists(filePath))
         {
             var json = await File.ReadAllTextAsync(filePath, ct);
-            var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
 
-            // If empty file (marker for missing data), add to negative cache and return
-            if (candles.Count == 0)
+            // Self-heal: an empty or whitespace-only file is corruption from a
+            // prior interrupted write. Delete it and fall through to refetch
+            // so one bad file can't poison the whole backtest.
+            if (string.IsNullOrWhiteSpace(json))
             {
-                _missingDataCache.Add(cacheKey);
-                return candles;
+                try { File.Delete(filePath); } catch { /* best-effort */ }
             }
+            else
+            {
+                try
+                {
+                    var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
 
-            // Add to memory cache with LRU eviction
-            AddToMemoryCache(cacheKey, candles);
-            return candles;
+                    // If empty file (marker for missing data), add to negative cache and return
+                    if (candles.Count == 0)
+                    {
+                        _missingDataCache.Add(cacheKey);
+                        return candles;
+                    }
+
+                    // Add to memory cache with LRU eviction
+                    AddToMemoryCache(cacheKey, candles);
+                    return candles;
+                }
+                catch (JsonException)
+                {
+                    // Corrupt JSON — same treatment as empty: delete, refetch.
+                    try { File.Delete(filePath); } catch { /* best-effort */ }
+                }
+            }
         }
 
         Directory.CreateDirectory(securityFolder);
@@ -192,22 +211,46 @@ public class HistoricalDataCache
         if (File.Exists(filePath))
         {
             var json = await File.ReadAllTextAsync(filePath, ct);
-            existing = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
 
-            if (existing.Count == 0)
+            // Self-heal: empty/corrupt files get deleted; `existing` stays empty
+            // and the merge-with-fetch path below handles the gap.
+            if (string.IsNullOrWhiteSpace(json))
             {
-                _missingDataCache.Add(memoryKey);
-                return new List<Candle>();
+                try { File.Delete(filePath); } catch { /* best-effort */ }
+            }
+            else
+            {
+                try
+                {
+                    existing = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
+                }
+                catch (JsonException)
+                {
+                    try { File.Delete(filePath); } catch { /* best-effort */ }
+                    existing = new List<Candle>();
+                }
             }
 
-            var minCached = existing.Min(c => c.Timestamp.Date);
-            var maxCached = existing.Max(c => c.Timestamp.Date);
-            if (minCached <= fromDate.Date && maxCached >= toDate.Date)
+            // NOTE: deliberately do NOT bail on `existing.Count == 0` here.
+            // For DAILY range data, an empty cached file `[]` is far more often
+            // a stale poison marker (Dhan returned 0 for a transient reason on
+            // a prior run) than a real "stock is delisted" verdict. Falling
+            // through to a fresh fetch is the safe choice — the cost is one
+            // API call per stock per process, which is bounded by the
+            // in-memory `_missingDataCache` guard above (line ~206) once a
+            // genuine no-data verdict lands within this process.
+
+            if (existing.Count > 0)
             {
-                AddToMemoryCache(memoryKey, existing);
-                return existing
-                    .Where(c => c.Timestamp.Date >= fromDate.Date && c.Timestamp.Date <= toDate.Date)
-                    .ToList();
+                var minCached = existing.Min(c => c.Timestamp.Date);
+                var maxCached = existing.Max(c => c.Timestamp.Date);
+                if (minCached <= fromDate.Date && maxCached >= toDate.Date)
+                {
+                    AddToMemoryCache(memoryKey, existing);
+                    return existing
+                        .Where(c => c.Timestamp.Date >= fromDate.Date && c.Timestamp.Date <= toDate.Date)
+                        .ToList();
+                }
             }
         }
 
@@ -219,7 +262,11 @@ public class HistoricalDataCache
 
             if (fetched.Count == 0 && existing.Count == 0)
             {
-                await File.WriteAllTextAsync(filePath, "[]", ct);
+                // Don't persist an `[]` marker for daily — empty fetches here
+                // are usually transient (bad date range, expired token,
+                // rate-limited, etc.) and persisting them poisons the cache
+                // across processes. In-memory negative cache stops repeat
+                // calls within THIS process; next process gets a fresh shot.
                 _missingDataCache.Add(memoryKey);
                 return new List<Candle>();
             }
@@ -304,16 +351,32 @@ public class HistoricalDataCache
         if (File.Exists(filePath))
         {
             var json = await File.ReadAllTextAsync(filePath, ct);
-            var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
 
-            if (candles.Count == 0)
+            // Self-heal: empty/corrupt files deleted, refetch via fall-through.
+            if (string.IsNullOrWhiteSpace(json))
             {
-                _missingDataCache.Add(cacheKey);
-                return candles;
+                try { File.Delete(filePath); } catch { /* best-effort */ }
             }
+            else
+            {
+                try
+                {
+                    var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
 
-            AddToMemoryCache(cacheKey, candles);
-            return candles;
+                    if (candles.Count == 0)
+                    {
+                        _missingDataCache.Add(cacheKey);
+                        return candles;
+                    }
+
+                    AddToMemoryCache(cacheKey, candles);
+                    return candles;
+                }
+                catch (JsonException)
+                {
+                    try { File.Delete(filePath); } catch { /* best-effort */ }
+                }
+            }
         }
 
         Directory.CreateDirectory(securityFolder);
@@ -415,14 +478,30 @@ public class HistoricalDataCache
         if (File.Exists(filePath))
         {
             var json = await File.ReadAllTextAsync(filePath, ct);
-            var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
-            if (candles.Count == 0)
+
+            // Self-heal: empty/corrupt files deleted, refetch via fall-through.
+            if (string.IsNullOrWhiteSpace(json))
             {
-                _missingDataCache.Add(cacheKey);
-                return candles;
+                try { File.Delete(filePath); } catch { /* best-effort */ }
             }
-            AddToMemoryCache(cacheKey, candles);
-            return candles;
+            else
+            {
+                try
+                {
+                    var candles = JsonSerializer.Deserialize<List<Candle>>(json) ?? new List<Candle>();
+                    if (candles.Count == 0)
+                    {
+                        _missingDataCache.Add(cacheKey);
+                        return candles;
+                    }
+                    AddToMemoryCache(cacheKey, candles);
+                    return candles;
+                }
+                catch (JsonException)
+                {
+                    try { File.Delete(filePath); } catch { /* best-effort */ }
+                }
+            }
         }
 
         Directory.CreateDirectory(securityFolder);

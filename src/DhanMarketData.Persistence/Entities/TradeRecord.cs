@@ -20,4 +20,10 @@ public class TradeRecord
     public string ExitReason { get; set; } = "";
     public decimal PnL { get; set; }
     public decimal PnLPercent { get; set; }
+
+    // Phase 9I: per-trade context (nullable so existing rows stay valid).
+    public decimal? RvolAtEntry { get; set; }
+    public decimal? OrWidthPct { get; set; }
+    public decimal? GapPct { get; set; }
+    public decimal? BreakoutCandleVolMult { get; set; }
 }

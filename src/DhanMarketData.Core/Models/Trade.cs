@@ -15,4 +15,14 @@ public class Trade
     public string ExitReason { get; set; } = string.Empty;
     public decimal PnL { get; set; }
     public decimal PnLPercent { get; set; }
+
+    // Phase 9I: per-trade context for post-hoc pattern analysis.
+    // Populated by strategies that consume the rich ScreenerSignal
+    // (currently ConfluenceOrbLongStrategy). Legacy strategies leave
+    // these null. Cross-tab winners vs losers by these dimensions in
+    // SQL after the run.
+    public decimal? RvolAtEntry { get; set; }
+    public decimal? OrWidthPct { get; set; }
+    public decimal? GapPct { get; set; }
+    public decimal? BreakoutCandleVolMult { get; set; }
 }

@@ -240,12 +240,12 @@ namespace DhanMarketData.Persistence.Migrations
                         {
                             Id = 6,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "15-min ORB on F&O-eligible NSE stocks, filtered by cash RVOL and confirmed by futures OI direction. Long buildup = full size; short covering = half size.",
+                            Description = "15-min ORB on F&O-eligible NSE stocks, filtered by cash RVOL and confirmed by futures OI direction. Long buildup = full size; short covering = half size. v1 uses 5-min timeframe (15-min OI delta requires multi-candle OR), MinScoreThreshold instead of cross-stock top-N ranking, and includes spec §12 cost model (0.10% RT).",
                             IsBuiltIn = true,
                             Name = "Volume Confluence Breakout (Long)",
-                            ScreenerConfigJson = "{\n  \"OpeningRangeMinutes\": 15,\n  \"DojiThreshold\": 0.10,\n  \"RvolLookbackDays\": 14,\n  \"MinRvol\": 1.0,\n  \"MinScoreThreshold\": 1.5,\n  \"RequireFnoOnly\": true,\n  \"MinPrice\": 50,\n  \"MinAvgRupeeVolume\": 1000000000,\n  \"MinAtrPercent\": 1.0,\n  \"MaxYesterdayRangePct\": 9.0,\n  \"AtrLookback\": 14,\n  \"RequireOiConfluence\": true,\n  \"MinOiDeltaPercent\": 1.0,\n  \"SkipDayIfIndiaVixAbove\": 25.0,\n  \"SkipDayIfNiftyGapPct\": 2.0,\n  \"MinHistoricalDays\": 28\n}",
+                            ScreenerConfigJson = "{\n  \"OpeningRangeMinutes\": 15,\n  \"DojiThreshold\": 0.10,\n  \"RvolLookbackDays\": 14,\n  \"MinRvol\": 1.0,\n  \"MinScoreThreshold\": 1.0,\n  \"RequireFnoOnly\": true,\n  \"MinPrice\": 50,\n  \"MinAvgRupeeVolume\": 1000000000,\n  \"MinAtrPercent\": 1.0,\n  \"MaxYesterdayRangePct\": 9.0,\n  \"AtrLookback\": 14,\n  \"RequireOiConfluence\": false,\n  \"MinOiDeltaPercent\": 1.0,\n  \"SkipDayIfIndiaVixAbove\": 25.0,\n  \"SkipDayIfNiftyGapPct\": 2.0,\n  \"MinHistoricalDays\": 28,\n  \"SkipTuesday\": true,\n  \"MinGapPct\": -1.5\n}",
                             ScreenerType = "rvolorb",
-                            StrategyConfigJson = "{\n  \"AtrStopMultiplier\": 0.15,\n  \"NoFillCutoff\": \"13:00:00\",\n  \"ExitTime\": \"14:30:00\",\n  \"DayMultiplierMon\": 1.0,\n  \"DayMultiplierTue\": 0.5,\n  \"DayMultiplierWed\": 0.8,\n  \"DayMultiplierThu\": 1.2,\n  \"DayMultiplierFri\": 1.5\n}",
+                            StrategyConfigJson = "{\n  \"AtrStopMultiplier\": 0.30,\n  \"NoFillCutoff\": \"13:00:00\",\n  \"EntryNotBefore\": \"10:00:00\",\n  \"EntryNotAfter\": \"10:30:00\",\n  \"MinBreakoutVolMult\": 0.5,\n  \"ExitTime\": \"14:30:00\",\n  \"DayMultiplierMon\": 1.0,\n  \"DayMultiplierTue\": 1.0,\n  \"DayMultiplierWed\": 1.0,\n  \"DayMultiplierThu\": 1.0,\n  \"DayMultiplierFri\": 1.0,\n  \"CostModelRoundTripPct\": 0.10\n}",
                             StrategyType = "confluenceorblong",
                             TradingConfigJson = "{\n  \"MarketOpenTime\": \"09:15:00\",\n  \"MarketCloseTime\": \"15:30:00\",\n  \"EntryTime\": \"09:30:00\",\n  \"ExitTime\": \"14:30:00\",\n  \"TargetMultiplier\": 1.0,\n  \"FixedStopLoss\": 1000,\n  \"FixedTarget\": 0,\n  \"RequireCloseAboveDayOpen\": false,\n  \"TrailStepMultiplier\": 1.0,\n  \"MaxTradesPerDay\": 10,\n  \"MaxCapitalPerTrade\": 100000\n}",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -260,6 +260,9 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.Property<int>("BacktestRunId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("BreakoutCandleVolMult")
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("Date")
                         .HasColumnType("TEXT");
@@ -283,6 +286,12 @@ namespace DhanMarketData.Persistence.Migrations
                     b.Property<DateTime>("ExitTime")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("GapPct")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OrWidthPct")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("PnL")
                         .HasPrecision(18, 4)
                         .HasColumnType("TEXT");
@@ -293,6 +302,9 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.Property<int>("Quantity")
                         .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("RvolAtEntry")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("SecurityId")
                         .IsRequired()

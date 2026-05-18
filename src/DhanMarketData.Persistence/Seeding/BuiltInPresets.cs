@@ -196,30 +196,35 @@ public static class BuiltInPresets
                   "DojiThreshold": 0.10,
                   "RvolLookbackDays": 14,
                   "MinRvol": 1.0,
-                  "MinScoreThreshold": 1.5,
+                  "MinScoreThreshold": 1.0,
                   "RequireFnoOnly": true,
                   "MinPrice": 50,
                   "MinAvgRupeeVolume": 1000000000,
                   "MinAtrPercent": 1.0,
                   "MaxYesterdayRangePct": 9.0,
                   "AtrLookback": 14,
-                  "RequireOiConfluence": true,
+                  "RequireOiConfluence": false,
                   "MinOiDeltaPercent": 1.0,
                   "SkipDayIfIndiaVixAbove": 25.0,
                   "SkipDayIfNiftyGapPct": 2.0,
-                  "MinHistoricalDays": 28
+                  "MinHistoricalDays": 28,
+                  "SkipTuesday": true,
+                  "MinGapPct": -1.5
                 }
                 """,
             StrategyConfigJson = """
                 {
-                  "AtrStopMultiplier": 0.15,
+                  "AtrStopMultiplier": 0.30,
                   "NoFillCutoff": "13:00:00",
+                  "EntryNotBefore": "10:00:00",
+                  "EntryNotAfter": "10:30:00",
+                  "MinBreakoutVolMult": 0.5,
                   "ExitTime": "14:30:00",
                   "DayMultiplierMon": 1.0,
-                  "DayMultiplierTue": 0.5,
-                  "DayMultiplierWed": 0.8,
-                  "DayMultiplierThu": 1.2,
-                  "DayMultiplierFri": 1.5,
+                  "DayMultiplierTue": 1.0,
+                  "DayMultiplierWed": 1.0,
+                  "DayMultiplierThu": 1.0,
+                  "DayMultiplierFri": 1.0,
                   "CostModelRoundTripPct": 0.10
                 }
                 """,

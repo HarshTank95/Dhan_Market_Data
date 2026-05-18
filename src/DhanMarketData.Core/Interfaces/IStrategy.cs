@@ -76,4 +76,20 @@ public interface IStrategy
         decimal sizingMultiplier,
         decimal atr)
         => ExecuteTrade(symbol, securityId, date, candles, signalCandles, entryCandle, sizingMultiplier);
+
+    /// <summary>
+    /// Full-signal overload (Phase 9I). Carries the rich screener context
+    /// (RVOL at entry, OR width %, gap %) so strategies that consume it
+    /// can write the same values onto Trade for post-hoc cross-tabs.
+    /// Default impl extracts the legacy values and forwards — existing
+    /// strategies behave identically.
+    /// </summary>
+    Trade? ExecuteTrade(
+        string symbol,
+        string securityId,
+        DateTime date,
+        List<Candle> candles,
+        ScreenerSignal signal,
+        Candle entryCandle)
+        => ExecuteTrade(symbol, securityId, date, candles, signal.Candles, entryCandle, signal.SizingMultiplier, signal.Atr);
 }

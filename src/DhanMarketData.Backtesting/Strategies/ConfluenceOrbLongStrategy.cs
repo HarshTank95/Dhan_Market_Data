@@ -59,15 +59,67 @@ public class ConfluenceOrbLongStrategy : IStrategy
     }
 
     // Legacy 6-arg path. The screener requires Daily+Futures so the engine
-    // will always go via the 8-arg overload below; this exists only so
+    // will always go via the rich-signal overload below; this exists only so
     // IStrategy's interface contract is satisfied.
     public Trade? ExecuteTrade(
         string symbol, string securityId, DateTime date,
         List<Candle> candles, List<Candle> signalCandles, Candle entryCandle)
         => null;
 
-    // The real implementation. Engine routes here via the default chain
-    // (8-arg → 7-arg → 6-arg overrides on this class).
+    // Phase 9I: rich-signal overload. Engine prefers this and we use it to
+    // pull RvolAtEntry / OrWidthPct / GapPct off the signal so we can write
+    // them onto Trade for cross-tab post-hoc analysis.
+    public Trade? ExecuteTrade(
+        string symbol, string securityId, DateTime date,
+        List<Candle> candles, ScreenerSignal signal, Candle entryCandle)
+    {
+        var trade = ExecuteTrade(
+            symbol, securityId, date, candles,
+            signal.Candles, entryCandle, signal.SizingMultiplier, signal.Atr);
+
+        if (trade is not null)
+        {
+            trade.RvolAtEntry = signal.RvolAtEntry;
+            trade.OrWidthPct = signal.OrWidthPct;
+            trade.GapPct = signal.GapPct;
+            // Breakout-candle vol multiplier: vol of the candle that triggered
+            // the fill, divided by the average per-candle volume during the OR
+            // window. Tells us if the trigger came with conviction (heavy vol)
+            // or on a thin tick (light vol). The OR summary is signal.Candles[0].
+            if (signal.Candles.Count > 0 && trade.EntryTime != default)
+            {
+                var orSummary = signal.Candles[0];
+                var orMinutes = 15;  // matches OpeningRangeMinutes default
+                var orStart = orSummary.Timestamp;
+                var orEnd = orStart.AddMinutes(orMinutes);
+                // Average per-candle volume during OR (sum / count of OR candles)
+                var orCandles = candles.Where(c => c.Timestamp.Date == date.Date
+                                                && c.Timestamp >= orStart
+                                                && c.Timestamp < orEnd).ToList();
+                if (orCandles.Count > 0)
+                {
+                    var orAvgVol = orCandles.Average(c => (double)c.Volume);
+                    var triggerCandle = candles.FirstOrDefault(c => c.Timestamp == trade.EntryTime);
+                    if (triggerCandle is not null && orAvgVol > 0)
+                    {
+                        var volMult = (decimal)((double)triggerCandle.Volume / orAvgVol);
+                        trade.BreakoutCandleVolMult = volMult;
+
+                        // Phase 9J: gate on breakout-candle volume multiplier.
+                        // Thin triggers (<0.5x of OR average) produce near-random
+                        // P&L; only conviction triggers (≥0.5x) have edge. Reject
+                        // the trade if the volume multiplier is too low.
+                        if (volMult < _stratConfig.MinBreakoutVolMult)
+                            return null;
+                    }
+                }
+            }
+        }
+
+        return trade;
+    }
+
+    // The real implementation. Called by the rich-signal overload above.
     public Trade? ExecuteTrade(
         string symbol,
         string securityId,
@@ -98,14 +150,18 @@ public class ConfluenceOrbLongStrategy : IStrategy
 
         // ── Find the fill (stop-market triggered) ──────────────────────
         var noFillCutoffUtc = IstToUtc(_stratConfig.NoFillCutoff);
+        var entryNotBeforeUtc = IstToUtc(_stratConfig.EntryNotBefore);
+        var entryNotAfterUtc = IstToUtc(_stratConfig.EntryNotAfter);
 
         Candle? fillCandle = null;
         for (int i = 0; i < candles.Count; i++)
         {
             var c = candles[i];
             if (c.Timestamp.Date != date.Date) continue;
-            if (c.Timestamp < orWindowEnd) continue;             // still inside OR window
-            if (c.Timestamp.TimeOfDay > noFillCutoffUtc) break;  // late breakout — abandoned
+            if (c.Timestamp < orWindowEnd) continue;                  // still inside OR window
+            if (c.Timestamp.TimeOfDay < entryNotBeforeUtc) continue;  // too early — wait for morning noise to clear
+            if (c.Timestamp.TimeOfDay > entryNotAfterUtc) break;      // past entry window — 10:00-10:29 is the gold band
+            if (c.Timestamp.TimeOfDay > noFillCutoffUtc) break;       // late breakout — abandoned
 
             if (c.High >= orHigh)
             {
@@ -136,7 +192,14 @@ public class ConfluenceOrbLongStrategy : IStrategy
         var fillIndex = candles.IndexOf(fillCandle);
         if (fillIndex < 0) return null;
 
-        for (int i = fillIndex; i < candles.Count; i++)
+        // Start stop-checking from the candle AFTER the fill candle. Within
+        // the fill candle itself we don't know the tick order — High triggered
+        // the fill, but the Low could be before/after. Checking Low on the
+        // same candle creates spurious same-candle stop-outs (observed
+        // empirically: many trades had EntryTime == ExitTime). Skipping the
+        // fill candle is the more honest one-sided convention given 5-min
+        // bar granularity.
+        for (int i = fillIndex + 1; i < candles.Count; i++)
         {
             var c = candles[i];
             if (c.Timestamp.Date != date.Date) continue;

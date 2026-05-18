@@ -30,7 +30,14 @@ public sealed record ScreenerContext(
 public sealed record ScreenerSignal(
     List<Candle> Candles,
     decimal SizingMultiplier = 1.0m,
-    decimal Atr = 0m);
+    decimal Atr = 0m,
+    // Phase 9I additions — per-trade context for post-hoc pattern analysis.
+    // Strategies that consume these populate Trade.* with the same values
+    // so SQL queries can cross-tab winners/losers by RVOL bucket, OR width,
+    // gap behavior, etc. Defaults are sentinel zero / not-populated.
+    decimal RvolAtEntry = 0m,
+    decimal OrWidthPct = 0m,
+    decimal GapPct = 0m);
 
 /// <summary>
 /// Interface for all screeners. Implement this to create a new screener.
@@ -99,6 +106,16 @@ public interface IScreener
     /// per spec §4.2.
     /// </summary>
     decimal MaxNiftyGapPctThreshold => 2m;
+
+    /// <summary>
+    /// Optional diagnostic hook. Default is a no-op. Screeners that want to
+    /// emit accumulated counters (filter funnels, drop-out breakdowns, etc.)
+    /// override this and the orchestrator calls it at end-of-chunk with a
+    /// free-form label like "Days 2026-04-01 → 2026-04-30 (chunk 1/13)".
+    /// Implementations should print + reset their internal state so each
+    /// chunk reports independently.
+    /// </summary>
+    void LogDiagnostics(string context) { }
 
     /// <summary>
     /// Checks if the given candles meet the screening conditions
