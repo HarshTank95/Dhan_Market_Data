@@ -1,0 +1,49 @@
+# Auto-detect text files and normalize line endings to LF in the repo.
+# Working-tree files are also checked out as LF on all platforms.
+# This overrides the user's core.autocrlf setting for this repository.
+#
+# Why this matters here:
+#   BuiltInPresets.cs uses C# raw string literals ("""...""") for seeded JSON.
+#   Raw strings capture the SOURCE FILE'S line endings into the string value.
+#   If Git silently converts the file to CRLF on Windows, the seeded strings
+#   change ("\n" -> "\r\n"), which trips EF Core 10's PendingModelChangesWarning
+#   because the model no longer matches the migration snapshot.
+#
+# Same risk applies to any source-embedded multi-line literal that ends up
+# in an EF model snapshot.
+
+* text=auto eol=lf
+
+# Source code — always LF.
+*.cs        text eol=lf
+*.csproj    text eol=lf
+*.sln       text eol=lf
+*.json      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.md        text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.csv       text eol=lf
+
+# Windows-specific scripts must stay CRLF or cmd.exe chokes.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Treat as binary (no line-ending munging, no diff).
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.db        binary
+*.dll       binary
+*.exe       binary
+*.pdb       binary

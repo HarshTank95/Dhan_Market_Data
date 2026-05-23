@@ -36,7 +36,7 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ApiCredentials");
+                    b.ToTable("ApiCredentials", (string)null);
                 });
 
             modelBuilder.Entity("DhanMarketData.Persistence.Entities.BacktestRun", b =>
@@ -108,7 +108,7 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.HasIndex("StrategyPresetId");
 
-                    b.ToTable("BacktestRuns");
+                    b.ToTable("BacktestRuns", (string)null);
                 });
 
             modelBuilder.Entity("DhanMarketData.Persistence.Entities.StrategyPreset", b =>
@@ -163,7 +163,7 @@ namespace DhanMarketData.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("StrategyPresets");
+                    b.ToTable("StrategyPresets", (string)null);
 
                     b.HasData(
                         new
@@ -330,7 +330,7 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.HasIndex("BacktestRunId", "ExitReason");
 
-                    b.ToTable("TradeRecords");
+                    b.ToTable("TradeRecords", (string)null);
                 });
 
             modelBuilder.Entity("DhanMarketData.Persistence.Entities.BacktestRun", b =>
