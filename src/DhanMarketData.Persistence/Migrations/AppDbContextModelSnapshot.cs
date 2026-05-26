@@ -36,7 +36,7 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ApiCredentials", (string)null);
+                    b.ToTable("ApiCredentials");
                 });
 
             modelBuilder.Entity("DhanMarketData.Persistence.Entities.BacktestRun", b =>
@@ -108,7 +108,7 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.HasIndex("StrategyPresetId");
 
-                    b.ToTable("BacktestRuns", (string)null);
+                    b.ToTable("BacktestRuns");
                 });
 
             modelBuilder.Entity("DhanMarketData.Persistence.Entities.StrategyPreset", b =>
@@ -163,7 +163,7 @@ namespace DhanMarketData.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("StrategyPresets", (string)null);
+                    b.ToTable("StrategyPresets");
 
                     b.HasData(
                         new
@@ -249,6 +249,20 @@ namespace DhanMarketData.Persistence.Migrations
                             StrategyType = "confluenceorblong",
                             TradingConfigJson = "{\n  \"MarketOpenTime\": \"09:15:00\",\n  \"MarketCloseTime\": \"15:30:00\",\n  \"EntryTime\": \"09:30:00\",\n  \"ExitTime\": \"14:30:00\",\n  \"TargetMultiplier\": 1.0,\n  \"FixedStopLoss\": 1000,\n  \"FixedTarget\": 0,\n  \"RequireCloseAboveDayOpen\": false,\n  \"TrailStepMultiplier\": 1.0,\n  \"MaxTradesPerDay\": 10,\n  \"MaxCapitalPerTrade\": 100000\n}",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = 7,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Buy-the-dip: uptrending stocks (2–10% above their 20-day SMA) that gapped DOWN ≥1.5%, entered when price reclaims the 9-EMA intraday (pullback touch + bullish close), filtered to moderate trend strength (ADX ≤ 25 — high ADX = exhausted move). SL at trigger low, 1.5R target, hard exit 15:00 IST. The gap-down-in-uptrend is the stock selection; the 9-EMA reclaim is the trigger. Tuned on 500 NSE stocks × 250 days (net +52k, PF ~4.5, 77% win, max drawdown 3% — IN-SAMPLE, paper-test before live; the ADX≤25 cut is data-selected and will regress somewhat).",
+                            IsBuiltIn = true,
+                            Name = "EMA Gap-Down Reclaim (Long)",
+                            ScreenerConfigJson = "{\n  \"FastEmaPeriod\": 9,\n  \"SlowEmaPeriod\": 20,\n  \"SlopeLookback\": 5,\n  \"MinEmaDistanceAtr\": 0.3,\n  \"MaxEmaDistanceAtr\": 1.5,\n  \"MinDailyAtrPct\": 1.5,\n  \"DailyAtrPeriod\": 14,\n  \"MinDailyTrendPct\": 2.0,\n  \"MaxDailyTrendPct\": 10.0,\n  \"DailyTrendSmaPeriod\": 20,\n  \"IntradayAtrPeriod\": 14,\n  \"MorningStart\": \"10:00:00\",\n  \"MorningEnd\": \"11:00:00\",\n  \"AfternoonStart\": \"13:30:00\",\n  \"AfternoonEnd\": \"14:00:00\",\n  \"RequireEngulfing\": true,\n  \"MinStopDistancePct\": 0.45,\n  \"MaxStopDistancePct\": 1.5,\n  \"MinRvol\": 0,\n  \"RvolLookbackDays\": 10,\n  \"MinAdx\": 0,\n  \"MaxAdx\": 25,\n  \"AdxPeriod\": 14,\n  \"MinTriggerVolMult\": 0,\n  \"MinGapPct\": 0,\n  \"MaxGapPct\": 5,\n  \"MaxEntryGapPct\": -1.5,\n  \"MinPrice\": 100,\n  \"MinAverageDailyVolume\": 500000,\n  \"MinHistoricalDays\": 25\n}",
+                            ScreenerType = "emapullback",
+                            StrategyConfigJson = "{\n  \"RiskRewardRatio\": 1.5,\n  \"HardExitTime\": \"15:00:00\",\n  \"UseTrailingStop\": false,\n  \"TrailActivateR\": 1.0,\n  \"TrailGapR\": 1.0,\n  \"TrailHardTargetR\": 0,\n  \"CostModelRoundTripPct\": 0.10\n}",
+                            StrategyType = "emapullback",
+                            TradingConfigJson = "{\n  \"MarketOpenTime\": \"09:15:00\",\n  \"MarketCloseTime\": \"15:30:00\",\n  \"EntryTime\": \"09:30:00\",\n  \"ExitTime\": \"15:15:00\",\n  \"TargetMultiplier\": 2.5,\n  \"FixedStopLoss\": 500,\n  \"FixedTarget\": 2000,\n  \"RequireCloseAboveDayOpen\": false,\n  \"TrailStepMultiplier\": 2.0,\n  \"MaxTradesPerDay\": 2,\n  \"MaxCapitalPerTrade\": 300000\n}",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });
 
@@ -330,7 +344,7 @@ namespace DhanMarketData.Persistence.Migrations
 
                     b.HasIndex("BacktestRunId", "ExitReason");
 
-                    b.ToTable("TradeRecords", (string)null);
+                    b.ToTable("TradeRecords");
                 });
 
             modelBuilder.Entity("DhanMarketData.Persistence.Entities.BacktestRun", b =>

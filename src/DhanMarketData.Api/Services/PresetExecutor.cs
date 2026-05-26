@@ -87,6 +87,7 @@ public sealed class PresetExecutor : IPresetExecutor
             "openingrange" => "OpeningRange",
             "gapfade" => "GapFade",
             "rvolorb" => "RvolOrb",
+            "emapullback" => "EmaPullback",
             _ => throw new ArgumentException($"Unknown screener type: {preset.ScreenerType}"),
         };
 
@@ -102,6 +103,7 @@ public sealed class PresetExecutor : IPresetExecutor
         {
             "gapfadelong" => "GapFadeLong",
             "confluenceorblong" => "ConfluenceOrbLong",
+            "emapullback" => "EmaPullback",
             _ => null,
         };
         if (strategySectionKey is not null && !string.IsNullOrWhiteSpace(preset.StrategyConfigJson))

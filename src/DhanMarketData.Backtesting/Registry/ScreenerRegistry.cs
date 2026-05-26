@@ -33,6 +33,9 @@ public sealed class ScreenerRegistry : IScreenerRegistry
             BuildEntry("rvolorb", "Volume Confluence Breakout",
                 "F&O-eligible 15-min ORB filtered by cash RVOL and confirmed by futures Open Interest direction (long-only v1).",
                 typeof(RvolOrbConfig)),
+            BuildEntry("emapullback", "EMA Gap-Down Reclaim (Long)",
+                "Buy-the-dip: uptrending stocks (2–10% above 20-day SMA) that gapped down ≥1.5%, where price reclaims the 9-EMA intraday.",
+                typeof(EmaPullbackScreenerConfig)),
         };
 
         _byKey = _entries.ToDictionary(e => e.Key, StringComparer.OrdinalIgnoreCase);

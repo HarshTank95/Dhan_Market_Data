@@ -255,5 +255,62 @@ public static class BuiltInPresets
             CreatedAt = SeedTimestamp,
             UpdatedAt = SeedTimestamp,
         },
+        new StrategyPreset
+        {
+            Id = 7,
+            Name = "EMA Gap-Down Reclaim (Long)",
+            Description = "Buy-the-dip: uptrending stocks (2–10% above their 20-day SMA) that gapped DOWN ≥1.5%, entered when price reclaims the 9-EMA intraday (pullback touch + bullish close), filtered to moderate trend strength (ADX ≤ 25 — high ADX = exhausted move). SL at trigger low, 1.5R target, hard exit 15:00 IST. The gap-down-in-uptrend is the stock selection; the 9-EMA reclaim is the trigger. Tuned on 500 NSE stocks × 250 days (net +52k, PF ~4.5, 77% win, max drawdown 3% — IN-SAMPLE, paper-test before live; the ADX≤25 cut is data-selected and will regress somewhat).",
+            IsBuiltIn = true,
+            ScreenerType = "emapullback",
+            StrategyType = "emapullback",
+            ScreenerConfigJson = """
+                {
+                  "FastEmaPeriod": 9,
+                  "SlowEmaPeriod": 20,
+                  "SlopeLookback": 5,
+                  "MinEmaDistanceAtr": 0.3,
+                  "MaxEmaDistanceAtr": 1.5,
+                  "MinDailyAtrPct": 1.5,
+                  "DailyAtrPeriod": 14,
+                  "MinDailyTrendPct": 2.0,
+                  "MaxDailyTrendPct": 10.0,
+                  "DailyTrendSmaPeriod": 20,
+                  "IntradayAtrPeriod": 14,
+                  "MorningStart": "10:00:00",
+                  "MorningEnd": "11:00:00",
+                  "AfternoonStart": "13:30:00",
+                  "AfternoonEnd": "14:00:00",
+                  "RequireEngulfing": true,
+                  "MinStopDistancePct": 0.45,
+                  "MaxStopDistancePct": 1.5,
+                  "MinRvol": 0,
+                  "RvolLookbackDays": 10,
+                  "MinAdx": 0,
+                  "MaxAdx": 25,
+                  "AdxPeriod": 14,
+                  "MinTriggerVolMult": 0,
+                  "MinGapPct": 0,
+                  "MaxGapPct": 5,
+                  "MaxEntryGapPct": -1.5,
+                  "MinPrice": 100,
+                  "MinAverageDailyVolume": 500000,
+                  "MinHistoricalDays": 25
+                }
+                """,
+            StrategyConfigJson = """
+                {
+                  "RiskRewardRatio": 1.5,
+                  "HardExitTime": "15:00:00",
+                  "UseTrailingStop": false,
+                  "TrailActivateR": 1.0,
+                  "TrailGapR": 1.0,
+                  "TrailHardTargetR": 0,
+                  "CostModelRoundTripPct": 0.10
+                }
+                """,
+            TradingConfigJson = SharedTradingConfigJson,
+            CreatedAt = SeedTimestamp,
+            UpdatedAt = SeedTimestamp,
+        },
     };
 }

@@ -63,6 +63,14 @@ public sealed class StrategyRegistry : IStrategyRegistry
                 ConfigClassName = nameof(ConfluenceOrbStrategyConfig),
                 Fields = ConfigSchemaReflector.ExtractFields(typeof(ConfluenceOrbStrategyConfig)),
             },
+            new RegistryEntry
+            {
+                Key = "emapullback",
+                DisplayName = "EMA Gap-Down Reclaim (Long)",
+                Description = "Enter on the candle immediately after the 9-EMA reclaim trigger. SL = trigger low, target = entry + RR × risk, hard exit at HardExitTime IST. Quantity uses TradingConfig.FixedStopLoss as the rupee risk budget. Net of estimated 0.10% round-trip cost.",
+                ConfigClassName = nameof(EmaPullbackStrategyConfig),
+                Fields = ConfigSchemaReflector.ExtractFields(typeof(EmaPullbackStrategyConfig)),
+            },
         };
 
         _byKey = _entries.ToDictionary(e => e.Key, StringComparer.OrdinalIgnoreCase);

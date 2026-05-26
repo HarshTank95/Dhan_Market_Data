@@ -6,14 +6,17 @@ This file auto-loads. For deeper context, read in this order:
 
 1. `README.md` — quick start
 2. `docs/architecture.md` — 5-project solution layout + runtime flow
-3. `docs/strategies.md` — the 4 built-in strategies and their actual rules
+3. `docs/strategies.md` — the 7 built-in strategies and their actual rules
 4. `docs/extending.md` — how to add a new screener or strategy
 5. `docs/data-fetching.md` — Dhan API constraints, cache layout, token storage
 6. `RESTRUCTURE_CHANGELOG.md` — what was migrated from console → web (Phases 1–6)
+7. `docs/strategy-optimization-playbook.md` — reusable, criteria-driven method to take *any* strategy from idea/loss to a robust positive-expectancy preset (measure-don't-guess loop, robustness gates, lock-in checklist). Hand it to Claude with a hypothesis + success criteria.
 
 ## Current state
 
-Migration **complete** (Phases 1–6 all pushed). 5 .NET projects under `src/` + a Vite/React UI in `ui/`. Solution builds clean (0 warnings, 0 errors). API + UI integration smoke-tested through the Vite proxy. **Only thing not yet validated end-to-end: a real backtest run** — needs a fresh Dhan token (the one in `appsettings.local.json` is expired; new tokens go via the UI's Credentials page → `/api/credentials`, encrypted at rest with Windows DPAPI).
+Migration **complete** (Phases 1–6 all pushed). 5 .NET projects under `src/` + a Vite/React UI in `ui/`. Solution builds clean (0 warnings, 0 errors). Backtests run end-to-end against the Dhan v2 API (token set via the UI's Credentials page → `/api/credentials`, encrypted at rest with Windows DPAPI; tokens expire ~daily — refresh when fetches start failing or runs return 0 trades).
+
+Newest strategy: **EMA Gap-Down Reclaim (Long)** (`emapullback`, preset #7) — a data-tuned buy-the-dip (gap-down ≥1.5% in a daily uptrend, 9-EMA reclaim trigger). Developed/validated in-app on 500 NSE stocks × 250 days (net +66k, PF ~1.8, 13/13 months positive, in-sample — paper-test pending). See `docs/strategies.md`.
 
 ## Run it
 

@@ -36,6 +36,9 @@ public static class ScreenerFactory
             "rvolorb" => new RvolOrbScreener(
                 configuration.GetSection("Screeners:RvolOrb").Get<RvolOrbConfig>() ?? new RvolOrbConfig()
             ),
+            "emapullback" => new EmaPullbackScreener(
+                configuration.GetSection("Screeners:EmaPullback").Get<EmaPullbackScreenerConfig>() ?? new EmaPullbackScreenerConfig()
+            ),
             _ => throw new ArgumentException($"Unknown screener type: {screenerType}. Available: {string.Join(", ", GetAvailableScreeners())}")
         };
     }
@@ -49,7 +52,8 @@ public static class ScreenerFactory
             "dominancecandle",
             "openingrange",
             "gapfade",
-            "rvolorb"
+            "rvolorb",
+            "emapullback"
         };
     }
 
@@ -62,7 +66,8 @@ public static class ScreenerFactory
             { "dominancecandle", "Identifies strong bullish candles with dominant body (70-80% body, ≥5% wicks)" },
             { "openingrange", "Identifies clean gap-up stocks with opening range breakout potential (≥1.2% gap, ≤30% upper wick)" },
             { "gapfade", "Quiet, ATR-normalized gap-downs on liquid trending stocks (mean-reversion candidates)" },
-            { "rvolorb", "F&O-eligible 15-min ORB filtered by cash RVOL and futures OI direction (long-only v1)" }
+            { "rvolorb", "F&O-eligible 15-min ORB filtered by cash RVOL and futures OI direction (long-only v1)" },
+            { "emapullback", "Buy-the-dip: uptrending stocks (2–10% above 20-day SMA) that gapped down ≥1.5%, entered on the intraday 9-EMA reclaim" }
         };
     }
 }

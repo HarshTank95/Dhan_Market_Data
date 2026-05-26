@@ -22,6 +22,7 @@ public static class StrategyFactory
         var gapFadeConfig = configuration.GetSection("Screeners:GapFade").Get<GapFadeConfig>() ?? new GapFadeConfig();
         var gapFadeStrategyConfig = configuration.GetSection("Strategies:GapFadeLong").Get<GapFadeStrategyConfig>() ?? new GapFadeStrategyConfig();
         var confluenceOrbStrategyConfig = configuration.GetSection("Strategies:ConfluenceOrbLong").Get<ConfluenceOrbStrategyConfig>() ?? new ConfluenceOrbStrategyConfig();
+        var emaPullbackStrategyConfig = configuration.GetSection("Strategies:EmaPullback").Get<EmaPullbackStrategyConfig>() ?? new EmaPullbackStrategyConfig();
 
         return strategyType.ToLower() switch
         {
@@ -31,6 +32,7 @@ public static class StrategyFactory
             "openingrange" => new OpeningRangeBreakoutStrategy(tradingConfig, openingRangeConfig),
             "gapfadelong" => new GapFadeLongStrategy(tradingConfig, gapFadeConfig, gapFadeStrategyConfig),
             "confluenceorblong" => new ConfluenceOrbLongStrategy(tradingConfig, confluenceOrbStrategyConfig),
+            "emapullback" => new EmaPullbackStrategy(tradingConfig, emaPullbackStrategyConfig),
             _ => throw new ArgumentException($"Unknown strategy type: {strategyType}. Available: {string.Join(", ", GetAvailableStrategies())}")
         };
     }
@@ -44,7 +46,8 @@ public static class StrategyFactory
             "trailingstop",
             "openingrange",
             "gapfadelong",
-            "confluenceorblong"
+            "confluenceorblong",
+            "emapullback"
         };
     }
 
@@ -57,7 +60,8 @@ public static class StrategyFactory
             { "trailingstop", "Trail SL by fixed steps, no target - ride the trend" },
             { "openingrange", "Opening range breakout entry (9:25-9:45), SL at OR low, fixed target" },
             { "gapfadelong", "Gap fade long: confirmation entry inside a configurable window, RR target via TradingConfig" },
-            { "confluenceorblong", "Volume Confluence Breakout Long: stop-market at OR.High, ATR×0.15 stop, no target, time exit 14:30" }
+            { "confluenceorblong", "Volume Confluence Breakout Long: stop-market at OR.High, ATR×0.15 stop, no target, time exit 14:30" },
+            { "emapullback", "EMA Gap-Down Reclaim (Long): enter next bar after the 9-EMA reclaim; SL=trigger low, 1.5R target, hard exit 15:00" }
         };
     }
 }
