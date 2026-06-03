@@ -36,6 +36,9 @@ public sealed class ScreenerRegistry : IScreenerRegistry
             BuildEntry("emapullback", "EMA Gap-Down Reclaim (Long)",
                 "Buy-the-dip: uptrending stocks (2–10% above 20-day SMA) that gapped down ≥1.5%, where price reclaims the 9-EMA intraday.",
                 typeof(EmaPullbackScreenerConfig)),
+            BuildEntry("vwaporb", "VWAP ORB Momentum (Long)",
+                "Momentum: a liquid (≥30L/day), higher-priced (≥₹500) stock on a trending Mon/Wed session breaks above its opening-range high while holding a rising VWAP (slope 20–50 bps) on a non-negative gap day. Selection (day + liquidity + OR-width + slope band + gap) is the edge.",
+                typeof(VwapOrbScreenerConfig)),
         };
 
         _byKey = _entries.ToDictionary(e => e.Key, StringComparer.OrdinalIgnoreCase);

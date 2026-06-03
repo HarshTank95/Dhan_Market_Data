@@ -6,7 +6,7 @@ This file auto-loads. For deeper context, read in this order:
 
 1. `README.md` — quick start
 2. `docs/architecture.md` — 5-project solution layout + runtime flow
-3. `docs/strategies.md` — the 7 built-in strategies and their actual rules
+3. `docs/strategies.md` — the 8 built-in strategies and their actual rules
 4. `docs/extending.md` — how to add a new screener or strategy
 5. `docs/data-fetching.md` — Dhan API constraints, cache layout, token storage
 6. `RESTRUCTURE_CHANGELOG.md` — what was migrated from console → web (Phases 1–6)
@@ -16,7 +16,7 @@ This file auto-loads. For deeper context, read in this order:
 
 Migration **complete** (Phases 1–6 all pushed). 5 .NET projects under `src/` + a Vite/React UI in `ui/`. Solution builds clean (0 warnings, 0 errors). Backtests run end-to-end against the Dhan v2 API (token set via the UI's Credentials page → `/api/credentials`, encrypted at rest with Windows DPAPI; tokens expire ~daily — refresh when fetches start failing or runs return 0 trades).
 
-Newest strategy: **EMA Gap-Down Reclaim (Long)** (`emapullback`, preset #7) — a data-tuned buy-the-dip (gap-down ≥1.5% in a daily uptrend, 9-EMA reclaim trigger). Developed/validated in-app on 500 NSE stocks × 250 days (net +66k, PF ~1.8, 13/13 months positive, in-sample — paper-test pending). See `docs/strategies.md`.
+Newest strategy: **VWAP ORB Momentum (Long)** (`vwaporb`, preset #8) — a momentum opening-range-breakout confluence: on a Mon/Wed trending session, a liquid (≥30L/day) ₹500+ stock breaks above its 30-min OR high while holding a rising VWAP (slope 20–50 bps) on a non-negative gap day; held to 15:00. Developed via the offline diagnostic harness (`tools/vwap-diag*.cs`, non-lookahead) and **in-app validated**: 500-day run = **144 trades, +₹196/trade, 49% win, 16/24 months positive, +₹28,165 net**; consistent with the 250-day run (+₹184/trade). It replaced an earlier *VWAP Bounce* experiment that failed in-app. **Two hard-won lessons baked into `docs/strategy-optimization-playbook.md`:** (1) systematic VWAP *mean-reversion* (bounce/reclaim/fade) has no broad edge on NSE 5-min after cost — only this *momentum* confluence worked; (2) the offline harness over-states magnitude (it reported ~₹466/trade vs the real ~₹196) — **always reconcile in-app before trusting a number.** Regime-dependent (strong in trending quarters, weak in chop); a Nifty-VWAP regime filter is the natural next improvement. The high-win-rate **EMA Gap-Down Reclaim (Long)** (`emapullback`, preset #7) remains the other production preset. See `docs/strategies.md`. IN-SAMPLE — paper-test pending.
 
 ## Run it
 

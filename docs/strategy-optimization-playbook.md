@@ -142,6 +142,44 @@ If cost is a large fraction of per-trade risk, even a positive *gross* edge nets
 
 ## 8. Mechanical setup (this repo)
 
+### 8.0 Iterate on a FAST offline harness, validate in-app ONCE at the end
+
+> **The single biggest speed-up.** Don't iterate with the full in-app engine — it
+> takes ~20 min/run (DB writes, SignalR progress, orchestrator chunking, cache
+> layer). Instead, hypothesis-test with a **lean offline C# harness that reads the
+> cached candle files directly** (~6 min for the full universe, often faster once
+> the OS file-cache is warm). Use the slow in-app run only to *validate the final
+> locked config*.
+
+**Why it's ~3× faster:** the harness skips ~90% of the machinery — it just does
+`read .json file → compute indicator → check signal → tally in a List → print`.
+No DB, no progress events, no chunking, no orchestrator. Pure CPU over cached files.
+
+**How to build one** (copy `tools/vwap-diag*.cs` as templates):
+- File-based C# (`dotnet run tools/<x>.cs`). Iterate `data/<seg>/<tf>/<secId>/<date>.json`.
+- **Parse with `JsonDocument`, NOT `JsonSerializer.Deserialize<T>`** — .NET file-based
+  apps disable reflection-based serialization by default (it throws at runtime).
+- **Timestamps are mixed:** some cache files have a `Z` suffix, some don't. Parse with
+  `DateTime.Parse(s, Invariant, AdjustToUniversal | AssumeUniversal)` and treat the
+  value as UTC (IST = UTC + 5:30). Getting this wrong silently drops whole date ranges.
+- Re-implement only the strategy's entry/exit math; tally net-R per trade.
+
+**Non-negotiable discipline for the harness** (these are how it bites you):
+- **Build non-lookahead in from the FIRST probe.** Use only data known at signal
+  time — e.g. *prior-day* average volume, not today's full-day volume. A lookahead
+  liquidity filter inflated one VWAP champion ~4× (claimed +0.74R / 84% months; the
+  honest non-lookahead truth was +0.21R / 46%). If a "great" result appears, suspect
+  lookahead first.
+- **Mirror the live screener's realism:** one signal per stock-day if that's what the
+  screener emits; respect the same warmup; same cost model.
+- **The harness ≠ the engine.** It's an independent re-implementation, so it *will*
+  disagree with the in-app engine — the engine also applies `MaxTradesPerDay` and
+  `MaxCapitalPerTrade`, which the offline (uncapped) harness does not. The harness
+  picks *which* config to build; the in-app run proves *what you'd actually trade*.
+  Always reconcile the two before locking in (see §9).
+
+### 8.1 In-app run (authoritative validation)
+
 - **Run headless:** start the API (`dotnet run --project src/DhanMarketData.Api`),
   `POST /api/runs {presetId, stockCount, backtestDays, timeframe, exchangeSegment}`,
   poll `GET /api/runs/{id}` until status `2` (Completed).
@@ -177,9 +215,15 @@ If cost is a large fraction of per-trade risk, even a positive *gross* edge nets
    descriptions.
 3. `dotnet ef migrations add …` → review it's a clean `UpdateData` → `database update`.
 4. Build clean (0/0). Update `docs/strategies.md` and `CLAUDE.md`.
-5. **Re-run the locked preset and confirm it reproduces the validated numbers**
-   (behavior-neutral check) *before committing.*
-6. State plainly: in-sample result + "paper-trade before risking capital."
+5. **Reconcile harness ↔ engine:** run the locked config in-app (the slow,
+   authoritative path) and confirm the in-app result is consistent with the offline
+   harness. If they diverge sharply, find out why *before* trusting either —
+   usual culprits: lookahead in the harness, or `MaxTradesPerDay` /
+   `MaxCapitalPerTrade` biasing the in-app sample. The in-app number is what you'd
+   actually trade.
+6. **Re-run the locked preset once more and confirm it reproduces** (behavior-neutral
+   check) *before committing.*
+7. State plainly: in-sample result + "paper-trade before risking capital."
 
 ---
 

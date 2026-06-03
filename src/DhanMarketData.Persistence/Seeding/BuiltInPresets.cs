@@ -312,5 +312,68 @@ public static class BuiltInPresets
             CreatedAt = SeedTimestamp,
             UpdatedAt = SeedTimestamp,
         },
+        new StrategyPreset
+        {
+            Id = 8,
+            Name = "VWAP ORB Momentum (Long)",
+            Description = "Momentum: on a trending Mon/Wed session, a liquid (≥30L/day prior avg), higher-priced (≥₹500) stock that gapped ≥0% breaks above its 30-min opening-range high while holding above a RISING session VWAP (slope 20–50 bps — with-flow but not exhausted) and the opening range was wide (≥1%). Enter next bar's open; SL = min(VWAP, breakout-bar low); HELD TO 15:00 IST (only the stop exits earlier). The day + liquidity + price + OR-width + slope-band + gap selection is the edge; the opening-range break is the trigger. Developed via the offline diagnostic harness on 414 NSE stocks × ~250 days (5-min), fully non-lookahead: raw signal was gross-negative; this stacked config reached ~88 trades, +0.93R/trade (~₹466 at ₹500 risk), 63% win, 11/13 months positive. Mon/Wed avoids Tue/Thu/Fri expiry-day chop (corroborated across two VWAP strategies). IN-SAMPLE — paper-test before live.",
+            IsBuiltIn = true,
+            ScreenerType = "vwaporb",
+            StrategyType = "vwaporb",
+            ScreenerConfigJson = """
+                {
+                  "OpeningRangeBars": 6,
+                  "MinOrWidthPct": 1.0,
+                  "VwapSlopeLookback": 3,
+                  "MinVwapSlopeBps": 20,
+                  "MaxVwapSlopeBps": 50,
+                  "MinGapPct": 0,
+                  "WindowStart": "09:45:00",
+                  "WindowEnd": "14:00:00",
+                  "AllowMon": true,
+                  "AllowTue": false,
+                  "AllowWed": true,
+                  "AllowThu": false,
+                  "AllowFri": false,
+                  "MinStopDistancePct": 0.5,
+                  "MaxStopDistancePct": 0,
+                  "MinPrice": 500,
+                  "MinAverageDailyVolume": 3000000,
+                  "VolumeLookbackDays": 20,
+                  "MinHistoricalDays": 20
+                }
+                """,
+            StrategyConfigJson = """
+                {
+                  "HardExitTime": "15:00:00",
+                  "ExitOnCloseBelowVwap": false,
+                  "HardTargetR": 0,
+                  "RiskPerTrade": 500,
+                  "CostModelRoundTripPct": 0.10
+                }
+                """,
+            // Custom TradingConfig (deviates from SharedTradingConfigJson): VWAP ORB
+            // takes every qualifying breakout across the Mon/Wed universe (well under
+            // the cap on most days, but heavy days can exceed 2). The shared
+            // MaxTradesPerDay=2 cap would starve it; raised to 20. Same pattern as
+            // the Volume Confluence preset.
+            TradingConfigJson = """
+                {
+                  "MarketOpenTime": "09:15:00",
+                  "MarketCloseTime": "15:30:00",
+                  "EntryTime": "09:30:00",
+                  "ExitTime": "15:15:00",
+                  "TargetMultiplier": 2.5,
+                  "FixedStopLoss": 500,
+                  "FixedTarget": 2000,
+                  "RequireCloseAboveDayOpen": false,
+                  "TrailStepMultiplier": 2.0,
+                  "MaxTradesPerDay": 20,
+                  "MaxCapitalPerTrade": 300000
+                }
+                """,
+            CreatedAt = SeedTimestamp,
+            UpdatedAt = SeedTimestamp,
+        },
     };
 }

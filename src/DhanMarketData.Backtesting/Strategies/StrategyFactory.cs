@@ -23,6 +23,7 @@ public static class StrategyFactory
         var gapFadeStrategyConfig = configuration.GetSection("Strategies:GapFadeLong").Get<GapFadeStrategyConfig>() ?? new GapFadeStrategyConfig();
         var confluenceOrbStrategyConfig = configuration.GetSection("Strategies:ConfluenceOrbLong").Get<ConfluenceOrbStrategyConfig>() ?? new ConfluenceOrbStrategyConfig();
         var emaPullbackStrategyConfig = configuration.GetSection("Strategies:EmaPullback").Get<EmaPullbackStrategyConfig>() ?? new EmaPullbackStrategyConfig();
+        var vwapOrbStrategyConfig = configuration.GetSection("Strategies:VwapOrb").Get<VwapOrbStrategyConfig>() ?? new VwapOrbStrategyConfig();
 
         return strategyType.ToLower() switch
         {
@@ -33,6 +34,7 @@ public static class StrategyFactory
             "gapfadelong" => new GapFadeLongStrategy(tradingConfig, gapFadeConfig, gapFadeStrategyConfig),
             "confluenceorblong" => new ConfluenceOrbLongStrategy(tradingConfig, confluenceOrbStrategyConfig),
             "emapullback" => new EmaPullbackStrategy(tradingConfig, emaPullbackStrategyConfig),
+            "vwaporb" => new VwapOrbStrategy(tradingConfig, vwapOrbStrategyConfig),
             _ => throw new ArgumentException($"Unknown strategy type: {strategyType}. Available: {string.Join(", ", GetAvailableStrategies())}")
         };
     }
@@ -47,7 +49,8 @@ public static class StrategyFactory
             "openingrange",
             "gapfadelong",
             "confluenceorblong",
-            "emapullback"
+            "emapullback",
+            "vwaporb"
         };
     }
 
@@ -61,7 +64,8 @@ public static class StrategyFactory
             { "openingrange", "Opening range breakout entry (9:25-9:45), SL at OR low, fixed target" },
             { "gapfadelong", "Gap fade long: confirmation entry inside a configurable window, RR target via TradingConfig" },
             { "confluenceorblong", "Volume Confluence Breakout Long: stop-market at OR.High, ATR×0.15 stop, no target, time exit 14:30" },
-            { "emapullback", "EMA Gap-Down Reclaim (Long): enter next bar after the 9-EMA reclaim; SL=trigger low, 1.5R target, hard exit 15:00" }
+            { "emapullback", "EMA Gap-Down Reclaim (Long): enter next bar after the 9-EMA reclaim; SL=trigger low, 1.5R target, hard exit 15:00" },
+            { "vwaporb", "VWAP ORB Momentum (Long): enter next bar after the opening-range breakout; SL=min(VWAP,breakout low); held to 15:00 (stop can exit earlier)" }
         };
     }
 }
