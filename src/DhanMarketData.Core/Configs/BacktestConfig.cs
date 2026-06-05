@@ -27,8 +27,8 @@ public class BacktestConfig
                  Group = "Scope", Kind = ConfigFieldKind.Text, Order = 3)]
     public string Timeframe { get; set; } = "5min";
 
-    public string ScreenerType { get; set; } = "volumespike";
-    public string? StrategyType { get; set; } = "fixedtarget";
+    public string ScreenerType { get; set; } = "vwaporb";
+    public string? StrategyType { get; set; } = "vwaporb";
 
     [ConfigField(Label = "Data Fetch Only",
                  Description = "If on, downloads + caches candles without running a backtest",

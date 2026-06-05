@@ -1,6 +1,8 @@
 # Strategies
 
-A "strategy" in this app is a `(screener, execution)` combo wrapped in a named preset. There are **8 built-in presets** seeded into SQLite on first run; users can clone or create their own.
+A "strategy" in this app is a `(screener, execution)` combo wrapped in a named preset. There are **4 built-in presets** seeded into SQLite on first run; users can clone or create their own.
+
+> **History:** the four original experiments (Volume Spike, Dominance Breakout, Dominance Trailing, Opening Range Breakout) were removed in migration `RemoveLegacyPresets` (2026-06) along with their run history — they never developed a validated edge. The `breakout` screener class is retained (it had no preset) for ad-hoc custom presets.
 
 The screener decides *which stocks qualify*. The execution strategy decides *how to enter/exit*.
 
@@ -8,43 +10,18 @@ The screener decides *which stocks qualify*. The execution strategy decides *how
 
 | Preset | Screener | Execution | One-liner |
 |---|---|---|---|
-| **Volume Spike** | `volumespike` | `fixedtarget` | Early-morning unusual volume; enter at 9:30 open with fixed SL/target |
-| **Dominance Breakout** | `dominancecandle` | `breakoutentry` | Find a dominance candle 9:30–10:00; enter on next-candle break above its high; fixed SL/target |
-| **Dominance Trailing** | `dominancecandle` | `trailingstop` | Same entry as above; trailing SL replaces fixed target |
-| **Opening Range Breakout** | `openingrange` | `openingrange` | Clean gap-up + opening-range structure; enter on break above OR.High in execution window |
 | **Gap Fade (Long)** | `gapfade` | `gapfadelong` | Quiet, ATR-normalized gap-downs on liquid trending stocks; confirmation-candle mean-reversion entry (see `1_strategy-rvol-orb.md` family) |
 | **Volume Confluence Breakout (Long)** | `rvolorb` | `confluenceorblong` | F&O 15-min ORB filtered by cash RVOL + futures OI direction (see `1_strategy-rvol-orb.md`, `2_strategy-rvol-orb-integration.md`) |
 | **EMA Gap-Down Reclaim (Long)** | `emapullback` | `emapullback` | Buy-the-dip: uptrending stock (2–10% above 20-day SMA) that gapped down ≥1.5%, entered on the intraday 9-EMA reclaim |
 | **VWAP ORB Momentum (Long)** | `vwaporb` | `vwaporb` | Momentum: Mon/Wed liquid (≥30L/day), higher-priced (≥₹500) stock breaks above its 30-min opening-range high while holding a rising VWAP (slope 20–50 bps) on a non-negative gap day; held to 15:00. |
 
-Seed values come from the legacy `appsettings.json` (the actively-tuned defaults), except the EMA Gap-Down Reclaim and VWAP ORB Momentum presets, whose defaults were tuned empirically in-app (see their sections below).
+The EMA Gap-Down Reclaim and VWAP ORB Momentum presets were tuned empirically in-app (see their sections below); Gap Fade and Volume Confluence carry research-grade defaults.
 
 ## Screeners
-
-### Volume Spike (`volumespike`, `VolumeSpikeConfig`)
-- All first N candles (default 3) green and high-volume
-- Volume ≥ `VolumeMultiplier` × historical average
-- Candle size < `CandleSizeMultiplier` × historical average
 
 ### Breakout (`breakout`, `BreakoutConfig`)
 - Close ≥ historicalLow + range × `BreakoutThreshold`
 - Green candle with volume ≥ `VolumeMultiplier` × average
-
-### Dominance Candle (`dominancecandle`, `DominanceCandleConfig`)
-- Body 70–85% of range (`MinBodyPercent` … `MaxBodyPercent`)
-- Both wicks ≥ 5% of range (`MinWickPercent`)
-- Candle size 1.0–2.5× 10-day average
-- Volume ≥ 2.0× average AND ≥ `MinAbsoluteVolume` (default 5000)
-- Gap filter: ≤ 2.5% gap-up, ≤ 1.0% gap-down
-- Within IST entry bracket (default 09:30–10:00)
-- Total move ≤ `MaxMovementMultiplier` × expected (filters explosive opens)
-
-### Opening Range (`openingrange`, `OpeningRangeConfig`)
-- Gap-up between `MinGapPercent` and `MaxGapPercent`
-- First N "clean" candles (low upper-wick fraction)
-- Volume ≥ `MinVolumeMultiplier` × average
-- Opening range ends at `ObservationEndTime` (default 09:25)
-- Breakout entry must occur within `ExecutionWindowStart`–`End`
 
 ### EMA Gap-Down Reclaim (`emapullback`, `EmaPullbackScreenerConfig`)
 > **The edge is stock selection, not the EMA.** A buy-the-dip: the screener
@@ -95,25 +72,6 @@ Per-candle trigger (first qualifying candle in the window wins):
 See `1_strategy-rvol-orb.md` and `2_strategy-rvol-orb-integration.md`.
 
 ## Execution strategies
-
-### Fixed Target (`fixedtarget`)
-- Entry at `entryCandle.Open` (after screener fires)
-- Stop = lowest low among the screener's signal candles
-- Target = entry + (`FixedTarget` / quantity), where `Quantity = floor(FixedStopLoss / riskPerShare)`
-- Time-stop at `ExitTime` (default 15:15 IST)
-
-### Breakout Entry (`breakoutentry`)
-- Used with `dominancecandle`. Enter at `dominance.High` only if the **next** candle breaks above it
-- Stop at `dominance.Low`, fixed-rupee target, 15:15 time-stop
-
-### Trailing Stop (`trailingstop`)
-- Same entry as Breakout Entry
-- Stop trails up by `FixedStopLoss × TrailStepMultiplier` per profit step (default 2.0× ⇒ ₹1000 step)
-- No fixed target — runs to trail-out or 15:15
-
-### Opening Range Breakout (`openingrange`)
-- Enter at `OR.High` if a candle breaks above inside the execution window
-- Stop at `OR.Low`, fixed-rupee target, 15:15 time-stop
 
 ### EMA Gap-Down Reclaim (`emapullback`, `EmaPullbackStrategyConfig`)
 - Entry at the **open of the candle after** the screener's reclaim candle

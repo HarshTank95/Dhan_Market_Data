@@ -81,10 +81,7 @@ public sealed class PresetExecutor : IPresetExecutor
     {
         var screenerSectionKey = preset.ScreenerType.ToLowerInvariant() switch
         {
-            "volumespike" => "VolumeSpike",
             "breakout" => "Breakout",
-            "dominancecandle" => "DominanceCandle",
-            "openingrange" => "OpeningRange",
             "gapfade" => "GapFade",
             "rvolorb" => "RvolOrb",
             "emapullback" => "EmaPullback",

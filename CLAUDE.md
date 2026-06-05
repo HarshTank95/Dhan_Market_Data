@@ -6,7 +6,7 @@ This file auto-loads. For deeper context, read in this order:
 
 1. `README.md` — quick start
 2. `docs/architecture.md` — 5-project solution layout + runtime flow
-3. `docs/strategies.md` — the 8 built-in strategies and their actual rules
+3. `docs/strategies.md` — the 4 built-in strategies and their actual rules
 4. `docs/extending.md` — how to add a new screener or strategy
 5. `docs/data-fetching.md` — Dhan API constraints, cache layout, token storage
 6. `RESTRUCTURE_CHANGELOG.md` — what was migrated from console → web (Phases 1–6)

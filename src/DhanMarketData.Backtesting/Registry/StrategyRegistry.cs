@@ -17,38 +17,6 @@ public sealed class StrategyRegistry : IStrategyRegistry
         {
             new RegistryEntry
             {
-                Key = "fixedtarget",
-                DisplayName = "Fixed Target",
-                Description = "Fixed stop-loss and target. Exits on SL hit, target hit, or end-of-day.",
-                ConfigClassName = "",
-                Fields = Array.Empty<RegistryField>(),
-            },
-            new RegistryEntry
-            {
-                Key = "breakoutentry",
-                DisplayName = "Breakout Entry",
-                Description = "Wait for the next candle to break above the signal candle's high; enter on confirmation. Fixed SL/target.",
-                ConfigClassName = "",
-                Fields = Array.Empty<RegistryField>(),
-            },
-            new RegistryEntry
-            {
-                Key = "trailingstop",
-                DisplayName = "Trailing Stop",
-                Description = "Same entry as Breakout Entry, but stop-loss trails up by FixedStopLoss × TrailStepMultiplier per profit step.",
-                ConfigClassName = "",
-                Fields = Array.Empty<RegistryField>(),
-            },
-            new RegistryEntry
-            {
-                Key = "openingrange",
-                DisplayName = "Opening Range Breakout",
-                Description = "Enter on a break above OR.High inside the configured execution window. Fixed SL/target.",
-                ConfigClassName = "",
-                Fields = Array.Empty<RegistryField>(),
-            },
-            new RegistryEntry
-            {
                 Key = "gapfadelong",
                 DisplayName = "Gap Fade (Long)",
                 Description = "Walk an entry window, wait for a confirmation candle (green close + breaks prior high), enter at next candle's open. SL = min(gap-low, capped %). RR target via TradingConfig.",

@@ -15,18 +15,9 @@ public sealed class ScreenerRegistry : IScreenerRegistry
     {
         _entries = new[]
         {
-            BuildEntry("volumespike", "Volume Spike",
-                "Detects unusual volume on the first N candles after market open.",
-                typeof(VolumeSpikeConfig)),
             BuildEntry("breakout", "Breakout",
                 "Identifies price breakouts from short-term consolidation zones.",
                 typeof(BreakoutConfig)),
-            BuildEntry("dominancecandle", "Dominance Candle",
-                "Identifies strong directional candles with body dominance and volume confirmation.",
-                typeof(DominanceCandleConfig)),
-            BuildEntry("openingrange", "Opening Range",
-                "Identifies clean gap-up + opening-range structures with breakout confirmation.",
-                typeof(OpeningRangeConfig)),
             BuildEntry("gapfade", "Gap Fade (Long)",
                 "Quiet, ATR-normalized gap-downs on liquid trending stocks — research-grade mean-reversion candidates.",
                 typeof(GapFadeConfig)),
