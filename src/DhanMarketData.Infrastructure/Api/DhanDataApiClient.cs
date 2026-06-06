@@ -122,7 +122,21 @@ public class DhanDataApiClient
         var responseContent = await response.Content.ReadAsStringAsync(ct);
         var historicalData = JsonSerializer.Deserialize<DhanHistoricalResponse>(responseContent);
 
-        return historicalData?.ToCandles() ?? new List<Candle>();
+        var daily = historicalData?.ToCandles() ?? new List<Candle>();
+
+        // LOOK-AHEAD FIX: a daily candle for IST trading day D is stamped at
+        // 00:00 IST = 18:30 UTC on D-1. ToCandles uses .UtcDateTime (no offset),
+        // so Timestamp.Date lands on D-1 — shifting every daily bar back one day.
+        // The orchestrator's `daily.Where(c => c.Timestamp.Date < day.Date)` then
+        // pulls TODAY's own candle in as "prevDay", making prevClose = today's
+        // close → the gap filter peeks at the close (look-ahead). Add the IST
+        // offset so Timestamp.Date is the real trading day. Intraday is parsed by
+        // the same ToCandles but is intentionally left in UTC (the strategy uses
+        // IstToUtc to compare), so this fix is scoped to the daily path only.
+        foreach (var c in daily)
+            c.Timestamp = c.Timestamp.AddHours(5).AddMinutes(30);
+
+        return daily;
     }
 
     public async Task<List<Candle>> GetIntradayCandlesAsync(
