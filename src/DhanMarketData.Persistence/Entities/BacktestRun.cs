@@ -25,6 +25,11 @@ public class BacktestRun
     public string Timeframe { get; set; } = "";
     public string ExchangeSegment { get; set; } = "";
 
+    // When true, the runner streams a per-(stock, day) decision funnel to
+    // logs/run-{id}.jsonl so each screening drop can be audited. Off by default
+    // (the log is large; opt in per run via the Run tab).
+    public bool DiagnosticLogEnabled { get; set; }
+
     public RunStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }

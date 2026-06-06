@@ -9,6 +9,9 @@ public sealed class StartRunRequest
     public int BacktestDays { get; init; } = 50;
     public string Timeframe { get; init; } = "5min";
     public string ExchangeSegment { get; init; } = "NSE_EQ";
+
+    /// <summary>Stream a per-(stock, day) decision funnel to logs/run-{id}.jsonl. Off by default.</summary>
+    public bool EnableDiagnosticLog { get; init; }
 }
 
 public class BacktestRunSummaryDto
@@ -25,6 +28,12 @@ public class BacktestRunSummaryDto
     public int TradeCount { get; init; }
     public decimal TotalPnL { get; init; }
     public string? ErrorMessage { get; init; }
+
+    /// <summary>Whether the run was started with diagnostic logging requested.</summary>
+    public bool DiagnosticLogEnabled { get; init; }
+
+    /// <summary>Whether a diagnostic log file currently exists on disk for this run.</summary>
+    public bool HasDiagnosticLog { get; set; }
 }
 
 public sealed class BacktestRunDetailDto : BacktestRunSummaryDto
@@ -83,4 +92,9 @@ public sealed class CancelActiveResponse
 public sealed class CleanupOrphansResponse
 {
     public int CleanedCount { get; init; }
+}
+
+public sealed class DeleteLogsResponse
+{
+    public int DeletedCount { get; init; }
 }

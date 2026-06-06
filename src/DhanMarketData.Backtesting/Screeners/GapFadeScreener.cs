@@ -51,52 +51,65 @@ public class GapFadeScreener : IScreener
     public bool MeetsConditions(ScreenerContext context, out List<Candle> signalCandles)
     {
         signalCandles = new List<Candle>();
+        var log = context.Decisions; // null unless diagnostic logging is on — pure side-channel
 
         var intraday = context.Intraday;
         var daily = context.Daily;
 
-        if (intraday == null || intraday.Count == 0) return false;
-        if (daily == null || daily.Count < _config.MinHistoricalDays) return false;
+        if (intraday == null || intraday.Count == 0)
+        { log?.Reject("no_intraday", "no intraday candles"); return false; }
+        if (daily == null || daily.Count < _config.MinHistoricalDays)
+        { log?.Reject("min_history", $"daily candles={daily?.Count ?? 0} < required {_config.MinHistoricalDays}"); return false; }
 
         // Split intraday into current day vs historical
         var currentDay = intraday.Last().Timestamp.Date;
         var currentIntraday = intraday.Where(c => c.Timestamp.Date == currentDay).ToList();
-        if (currentIntraday.Count == 0) return false;
+        if (currentIntraday.Count == 0)
+        { log?.Reject("no_current_day", "no intraday candles for the current day"); return false; }
 
         var firstCandle = currentIntraday.First();
 
         // 1. Min price (skip penny stocks)
-        if (firstCandle.Open < _config.MinPrice) return false;
+        if (firstCandle.Open < _config.MinPrice)
+        { log?.Reject("min_price", $"open ₹{firstCandle.Open:F2} < min ₹{_config.MinPrice:F2}", firstCandle.Open); return false; }
 
         // 2. Prior day's daily candle (most recent in daily list — already filtered to < currentDay by orchestrator)
         var sortedDaily = daily.OrderBy(c => c.Timestamp).ToList();
         var prevDay = sortedDaily[^1];
         var previousDayClose = prevDay.Close;
         var previousDayLow = prevDay.Low;
-        if (previousDayClose <= 0) return false;
+        if (previousDayClose <= 0)
+        { log?.Reject("bad_prev_close", "prior-day close ≤ 0"); return false; }
 
         // 3. Gap direction: gap-down only
-        if (firstCandle.Open >= previousDayClose) return false;
+        if (firstCandle.Open >= previousDayClose)
+        { log?.Reject("not_gap_down", $"open ₹{firstCandle.Open:F2} ≥ prev close ₹{previousDayClose:F2} (need gap-down)", firstCandle.Open); return false; }
         var gapSize = previousDayClose - firstCandle.Open;
 
         // 4. ATR-normalized gap size (the dominant predictor)
         var atr = ComputeAtrWilder(sortedDaily, _config.AtrPeriod);
-        if (atr <= 0) return false;
+        if (atr <= 0)
+        { log?.Reject("atr_unavailable", "daily ATR ≤ 0 (insufficient history)"); return false; }
         var gapAtrRatio = gapSize / atr;
-        if (gapAtrRatio < _config.MinGapAtrRatio || gapAtrRatio > _config.MaxGapAtrRatio) return false;
+        if (gapAtrRatio < _config.MinGapAtrRatio || gapAtrRatio > _config.MaxGapAtrRatio)
+        { log?.Reject("gap_atr_ratio", $"gap/ATR={gapAtrRatio:F2} outside [{_config.MinGapAtrRatio:F2}, {_config.MaxGapAtrRatio:F2}]", firstCandle.Open); return false; }
 
         // 5. Partial gap (open above prior day low)
-        if (_config.RequirePartialGap && firstCandle.Open <= previousDayLow) return false;
+        if (_config.RequirePartialGap && firstCandle.Open <= previousDayLow)
+        { log?.Reject("not_partial_gap", $"open ₹{firstCandle.Open:F2} ≤ prev low ₹{previousDayLow:F2} (full gap)", firstCandle.Open); return false; }
 
         // 6. Gap not already filled in the first 5 min
-        if (_config.RequireUnfilledAtEntry && firstCandle.High >= previousDayClose) return false;
+        if (_config.RequireUnfilledAtEntry && firstCandle.High >= previousDayClose)
+        { log?.Reject("gap_already_filled", $"9:15 high ₹{firstCandle.High:F2} ≥ prev close ₹{previousDayClose:F2}", firstCandle.Open); return false; }
 
         // 7. Trend filter (prev close > SMA)
         if (_config.RequireUptrend)
         {
             var sma = ComputeSma(sortedDaily, _config.SmaPeriod);
-            if (sma <= 0) return false;
-            if (previousDayClose <= sma) return false;
+            if (sma <= 0)
+            { log?.Reject("sma_unavailable", $"SMA({_config.SmaPeriod}) ≤ 0"); return false; }
+            if (previousDayClose <= sma)
+            { log?.Reject("not_uptrend", $"prev close ₹{previousDayClose:F2} ≤ SMA({_config.SmaPeriod}) ₹{sma:F2}", firstCandle.Open); return false; }
         }
 
         // 8. Liquidity: 20-day avg daily volume floor
@@ -105,21 +118,27 @@ public class GapFadeScreener : IScreener
             .OrderByDescending(c => c.Timestamp)
             .Take(dailyAvgVolDays)
             .Average(c => (double)c.Volume);
-        if (avgDailyVol < _config.MinAverageDailyVolume) return false;
+        if (avgDailyVol < _config.MinAverageDailyVolume)
+        { log?.Reject("liquidity", $"avg daily vol {avgDailyVol:N0} < min {_config.MinAverageDailyVolume:N0}", firstCandle.Open); return false; }
 
         // 9. Quiet-volume catalyst filter (9:15 candle vol ≤ historical 9:15-bar avg × mult)
         var avg9_15 = ComputeAvg9_15BarVolume(intraday, currentDay, _config.VolumeAverageDays);
-        if (avg9_15 <= 0) return false;
-        if ((double)firstCandle.Volume > avg9_15 * (double)_config.MaxOpeningVolumeMultiplier) return false;
+        if (avg9_15 <= 0)
+        { log?.Reject("no_9_15_baseline", "no historical 9:15-bar volume baseline"); return false; }
+        if ((double)firstCandle.Volume > avg9_15 * (double)_config.MaxOpeningVolumeMultiplier)
+        { log?.Reject("not_quiet_open", $"9:15 vol {firstCandle.Volume:N0} > {_config.MaxOpeningVolumeMultiplier:F1}× avg {avg9_15:N0}", firstCandle.Open); return false; }
 
         // 10. Min absolute volume sanity floor
-        if (firstCandle.Volume < _config.MinAbsoluteVolume) return false;
+        if (firstCandle.Volume < _config.MinAbsoluteVolume)
+        { log?.Reject("min_abs_volume", $"9:15 vol {firstCandle.Volume:N0} < min {_config.MinAbsoluteVolume:N0}", firstCandle.Open); return false; }
 
         // 11. SL distance check (gap candle low not too far below entry-candidate open)
         var slDistance = firstCandle.Open - firstCandle.Low;
-        if (slDistance <= 0) return false;
+        if (slDistance <= 0)
+        { log?.Reject("bad_sl_distance", "9:15 low ≥ open (non-positive SL distance)", firstCandle.Open); return false; }
         var slPercent = (slDistance / firstCandle.Open) * 100m;
-        if (slPercent > _config.MaxStopLossPercent) return false;
+        if (slPercent > _config.MaxStopLossPercent)
+        { log?.Reject("sl_too_wide", $"SL {slPercent:F2}% > max {_config.MaxStopLossPercent:F2}%", firstCandle.Open); return false; }
 
         // All filters passed — return the 9:15 candle as the SL anchor for the strategy
         signalCandles = new List<Candle> { firstCandle };

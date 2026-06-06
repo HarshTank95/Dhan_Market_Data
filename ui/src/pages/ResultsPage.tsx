@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 import { formatIstTime } from '../lib/datetime'
 
 export function ResultsPage() {
+  const qc = useQueryClient()
   const runs = useQuery({ queryKey: ['runs'], queryFn: api.listRuns, refetchInterval: 5000 })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const trades = useQuery({
@@ -13,10 +14,33 @@ export function ResultsPage() {
     queryFn: () => api.getRunTrades(selectedId!, 1, 500),
   })
 
+  const selectedRun = runs.data?.find(r => r.id === selectedId)
+  const anyLogs = runs.data?.some(r => r.hasDiagnosticLog) ?? false
+
+  const deleteLog = useMutation({
+    mutationFn: (id: number) => api.deleteLog(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['runs'] }),
+  })
+  const deleteAllLogs = useMutation({
+    mutationFn: () => api.deleteAllLogs(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['runs'] }),
+  })
+
   return (
     <div className="grid grid-cols-12 gap-6">
       <aside className="col-span-5">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">Past runs</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Past runs</h2>
+          {anyLogs && (
+            <button
+              onClick={() => { if (confirm('Delete ALL diagnostic log files?')) deleteAllLogs.mutate() }}
+              disabled={deleteAllLogs.isPending}
+              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-red-300 disabled:opacity-50"
+            >
+              {deleteAllLogs.isPending ? 'Deleting…' : 'Delete all logs'}
+            </button>
+          )}
+        </div>
         <div className="overflow-hidden rounded border border-zinc-800">
           <table className="w-full text-xs">
             <thead className="bg-zinc-900 text-left text-zinc-500">
@@ -58,12 +82,35 @@ export function ResultsPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
                 Trades · run #{selectedId}
               </h2>
-              <a
-                href={api.csvUrl(selectedId)}
-                className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800"
-              >
-                Download CSV
-              </a>
+              <div className="flex items-center gap-2">
+                {selectedRun?.hasDiagnosticLog && (
+                  <>
+                    <a
+                      href={api.logUrl(selectedId)}
+                      className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800"
+                      title="Per-stock screening decision funnel (JSONL)"
+                    >
+                      Download log
+                    </a>
+                    <button
+                      onClick={() => { if (confirm(`Delete the diagnostic log for run #${selectedId}?`)) deleteLog.mutate(selectedId) }}
+                      disabled={deleteLog.isPending}
+                      className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-red-300 disabled:opacity-50"
+                    >
+                      Delete log
+                    </button>
+                  </>
+                )}
+                {selectedRun?.diagnosticLogEnabled && !selectedRun?.hasDiagnosticLog && (
+                  <span className="text-xs text-zinc-600">log deleted</span>
+                )}
+                <a
+                  href={api.csvUrl(selectedId)}
+                  className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800"
+                >
+                  Download CSV
+                </a>
+              </div>
             </div>
             <div className="max-h-[600px] overflow-y-auto rounded border border-zinc-800">
               <table className="w-full text-xs">

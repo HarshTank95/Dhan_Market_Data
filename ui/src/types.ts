@@ -56,6 +56,8 @@ export interface BacktestRunSummary {
   tradeCount: number
   totalPnL: number
   errorMessage: string | null
+  diagnosticLogEnabled: boolean
+  hasDiagnosticLog: boolean
 }
 
 export interface BacktestRunDetail extends BacktestRunSummary {
@@ -110,4 +112,5 @@ export interface StartRunRequest {
   backtestDays: number
   timeframe: string
   exchangeSegment: string
+  enableDiagnosticLog?: boolean
 }

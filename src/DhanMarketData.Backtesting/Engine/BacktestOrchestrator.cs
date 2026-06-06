@@ -1,3 +1,4 @@
+using DhanMarketData.Core.Diagnostics;
 using DhanMarketData.Core.Models;
 using DhanMarketData.Configs;
 using DhanMarketData.Infrastructure.Caching;
@@ -50,7 +51,8 @@ public class BacktestOrchestrator
         int? stockCount,
         int? backtestDays,
         IProgress<BacktestProgress>? progress,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IScreenDecisionWriter? decisionWriter = null)
     {
         var count = stockCount ?? _config.StockCount;
         var days = backtestDays ?? _config.BacktestDays;
@@ -120,7 +122,7 @@ public class BacktestOrchestrator
             var chunkTrades = await ExecuteBacktestAsync(
                 stocks, stockData, stockDailyData, stockFuturesData, chunkBacktestDays, chunkAllDays,
                 progress, daysProcessed, days, chunkNumber, totalChunks,
-                cancellationToken);
+                cancellationToken, decisionWriter);
             allTrades.AddRange(chunkTrades);
             daysProcessed += chunkBacktestDays.Count;
 
@@ -356,7 +358,8 @@ public class BacktestOrchestrator
         int totalDaysPlanned = 0,
         int currentChunk = 0,
         int totalChunks = 0,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IScreenDecisionWriter? decisionWriter = null)
     {
         Console.WriteLine("Running backtest...\n");
         var allTrades = new List<Trade>();
@@ -392,6 +395,20 @@ public class BacktestOrchestrator
                 {
                     regimeSkipCount++;
                     Console.WriteLine($"  Day {day:yyyy-MM-dd} skipped (regime breaker: VIX≥{maxVix} or |NiftyGap%|>{maxGapPct})");
+                    if (decisionWriter is not null)
+                    {
+                        // One day-level decision rather than one per stock — the whole
+                        // day was skipped before any stock was screened.
+                        decisionWriter.Write(new ScreenDecision
+                        {
+                            Symbol = "*",
+                            SecurityId = "*",
+                            Date = day,
+                            Outcome = "day_skipped_regime",
+                            Stage = "regime_breaker",
+                            Detail = $"day skipped (VIX≥{maxVix} or |NiftyGap%|>{maxGapPct})",
+                        });
+                    }
                     _report.PrintDailySummary(day, dayTrades);
                     dayIndex++;
                     continue;
@@ -404,12 +421,25 @@ public class BacktestOrchestrator
                 if (_tradingConfig.MaxTradesPerDay > 0 && dayTrades.Count >= _tradingConfig.MaxTradesPerDay)
                     break; // Stop processing more stocks for this day
 
-                if (!stockData[stock.SecurityId].ContainsKey(day) ||
-                    stockData[stock.SecurityId][day].Count < 4)
+                var hasDay = stockData[stock.SecurityId].TryGetValue(day, out var dayCandlesForStock);
+                if (!hasDay || dayCandlesForStock!.Count < 4)
+                {
+                    decisionWriter?.Write(new ScreenDecision
+                    {
+                        Symbol = stock.TradingSymbol,
+                        SecurityId = stock.SecurityId,
+                        Date = day,
+                        Outcome = hasDay ? "insufficient_candles" : "no_data",
+                        Stage = hasDay ? "insufficient_candles" : "no_data",
+                        Detail = hasDay
+                            ? $"{dayCandlesForStock!.Count} candle(s) cached (<4 required)"
+                            : "no candles cached for this day",
+                    });
                     continue;
+                }
 
                 // Get current day's candles for trade simulation
-                var currentDayCandles = stockData[stock.SecurityId][day];
+                var currentDayCandles = dayCandlesForStock!;
 
                 // Get historical candles for screener's average calculation (pre-roll days BEFORE current day)
                 var historicalCandles = new List<Candle>();
@@ -442,13 +472,22 @@ public class BacktestOrchestrator
                     futuresForToday = futToday;
                 }
 
-                var trade = _backtestEngine.BacktestDay(
-                    stock.TradingSymbol,
-                    stock.SecurityId,
-                    day,
-                    allCandles,
-                    dailyForToday,
-                    futuresForToday);
+                // Use the decision-returning overload only when logging is on;
+                // otherwise the original BacktestDay path runs byte-identically.
+                Trade? trade;
+                ScreenDecision? decision = null;
+                if (decisionWriter is not null)
+                {
+                    (trade, decision) = _backtestEngine.BacktestDayWithDecision(
+                        stock.TradingSymbol, stock.SecurityId, day,
+                        allCandles, dailyForToday, futuresForToday);
+                }
+                else
+                {
+                    trade = _backtestEngine.BacktestDay(
+                        stock.TradingSymbol, stock.SecurityId, day,
+                        allCandles, dailyForToday, futuresForToday);
+                }
 
                 if (trade != null)
                 {
@@ -457,9 +496,17 @@ public class BacktestOrchestrator
                     if (_tradingConfig.MaxCapitalPerTrade > 0 && capitalRequired > _tradingConfig.MaxCapitalPerTrade)
                     {
                         // Skip this trade - exceeds capital limit
+                        if (decision is not null)
+                        {
+                            decision.Outcome = "skipped_capital";
+                            decision.Stage = "max_capital_per_trade";
+                            decision.Detail = $"capital ₹{capitalRequired:N0} > max ₹{_tradingConfig.MaxCapitalPerTrade:N0}";
+                            decisionWriter!.Write(decision);
+                        }
                         continue;
                     }
                     dayTrades.Add(trade);
+                    if (decision is not null) decisionWriter!.Write(decision);
 
                     progress?.Report(new BacktestProgress(
                         BacktestEventKind.TradeRecorded,
@@ -469,6 +516,10 @@ public class BacktestOrchestrator
                         TotalChunks: totalChunks,
                         Trade: trade,
                         Day: day));
+                }
+                else if (decision is not null)
+                {
+                    decisionWriter!.Write(decision);
                 }
             }
 

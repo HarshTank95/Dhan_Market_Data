@@ -1,5 +1,6 @@
 using DhanMarketData.Api.Contracts;
 using DhanMarketData.Backtest;
+using DhanMarketData.Core.Diagnostics;
 using DhanMarketData.Core.Models;
 using DhanMarketData.Persistence.Entities;
 
@@ -11,5 +12,6 @@ public interface IPresetExecutor
         StrategyPreset preset,
         StartRunRequest request,
         IProgress<BacktestProgress> progress,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IScreenDecisionWriter? decisionWriter = null);
 }

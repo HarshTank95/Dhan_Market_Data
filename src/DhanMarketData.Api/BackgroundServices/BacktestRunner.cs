@@ -65,6 +65,7 @@ public sealed class BacktestRunner : BackgroundService
         var runs = sp.GetRequiredService<IBacktestRunRepository>();
         var trades = sp.GetRequiredService<ITradeRecordRepository>();
         var executor = sp.GetRequiredService<IPresetExecutor>();
+        var logStore = sp.GetRequiredService<IBacktestLogStore>();
 
         var run = await db.BacktestRuns
             .Include(r => r.StrategyPreset)
@@ -80,11 +81,18 @@ public sealed class BacktestRunner : BackgroundService
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(hostStoppingToken);
         _queue.TryRegisterCancellation(runId, runCts);
 
+        // Diagnostic decision log (opt-in per run). Created here, disposed in
+        // finally so a partial log survives cancel/failure. Null when off.
+        Core.Diagnostics.IScreenDecisionWriter? logWriter = null;
+
         try
         {
             run.Status = RunStatus.Running;
             run.StartedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(hostStoppingToken);
+
+            if (run.DiagnosticLogEnabled)
+                logWriter = logStore.CreateWriter(runId);
 
             // Sync push from orchestrator → channel; async drain on this task.
             var progressChannel = Channel.CreateUnbounded<BacktestProgress>(
@@ -97,7 +105,7 @@ public sealed class BacktestRunner : BackgroundService
             {
                 try
                 {
-                    return await executor.ExecuteAsync(run.StrategyPreset, startRequest, progress, runCts.Token);
+                    return await executor.ExecuteAsync(run.StrategyPreset, startRequest, progress, runCts.Token, logWriter);
                 }
                 finally
                 {
@@ -189,6 +197,7 @@ public sealed class BacktestRunner : BackgroundService
         }
         finally
         {
+            logWriter?.Dispose();
             ((BacktestRunQueue)_queue).TryUnregister(runId);
         }
     }

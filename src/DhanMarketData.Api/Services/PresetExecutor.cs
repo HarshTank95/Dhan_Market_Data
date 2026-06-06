@@ -49,7 +49,8 @@ public sealed class PresetExecutor : IPresetExecutor
         StrategyPreset preset,
         StartRunRequest request,
         IProgress<BacktestProgress> progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Core.Diagnostics.IScreenDecisionWriter? decisionWriter = null)
     {
         var creds = await _credsRepo.GetAsync(cancellationToken)
             ?? throw new InvalidOperationException(
@@ -74,7 +75,7 @@ public sealed class PresetExecutor : IPresetExecutor
             backtestConfig, tradingConfig);
 
         return await orchestrator.RunBacktestAsync(
-            request.StockCount, request.BacktestDays, progress, cancellationToken);
+            request.StockCount, request.BacktestDays, progress, cancellationToken, decisionWriter);
     }
 
     private static IConfiguration BuildConfiguration(StrategyPreset preset, StartRunRequest request)

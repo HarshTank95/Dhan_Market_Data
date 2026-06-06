@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using DhanMarketData.Api.BackgroundServices;
 using DhanMarketData.Api.Contracts;
+using DhanMarketData.Api.Services;
 using DhanMarketData.Persistence;
 using DhanMarketData.Persistence.Entities;
 using DhanMarketData.Persistence.Repositories;
@@ -18,6 +19,7 @@ public sealed class RunsController : ControllerBase
     private readonly ITradeRecordRepository _trades;
     private readonly IStrategyPresetRepository _presets;
     private readonly IBacktestRunQueue _queue;
+    private readonly IBacktestLogStore _logStore;
     private readonly AppDbContext _db;
 
     public RunsController(
@@ -25,12 +27,14 @@ public sealed class RunsController : ControllerBase
         ITradeRecordRepository trades,
         IStrategyPresetRepository presets,
         IBacktestRunQueue queue,
+        IBacktestLogStore logStore,
         AppDbContext db)
     {
         _runs = runs;
         _trades = trades;
         _presets = presets;
         _queue = queue;
+        _logStore = logStore;
         _db = db;
     }
 
@@ -59,6 +63,7 @@ public sealed class RunsController : ControllerBase
             BacktestDays = req.BacktestDays,
             Timeframe = req.Timeframe,
             ExchangeSegment = req.ExchangeSegment,
+            DiagnosticLogEnabled = req.EnableDiagnosticLog,
             Status = RunStatus.Queued,
             CreatedAt = DateTime.UtcNow,
             TotalDaysPlanned = req.BacktestDays,
@@ -195,14 +200,24 @@ public sealed class RunsController : ControllerBase
         CancellationToken ct = default)
     {
         var runs = await _runs.ListAsync(status, Math.Clamp(limit, 1, 200), Math.Max(0, offset), ct);
-        return Ok(runs.Select(ToSummary).ToList());
+        var withLogs = _logStore.RunIdsWithLogs();
+        var dtos = runs.Select(r =>
+        {
+            var dto = ToSummary(r);
+            dto.HasDiagnosticLog = withLogs.Contains(r.Id);
+            return dto;
+        }).ToList();
+        return Ok(dtos);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<BacktestRunDetailDto>> Get(int id, CancellationToken ct)
     {
         var run = await _runs.GetAsync(id, ct);
-        return run is null ? NotFound() : Ok(ToDetail(run));
+        if (run is null) return NotFound();
+        var dto = ToDetail(run);
+        dto.HasDiagnosticLog = _logStore.Exists(id);
+        return Ok(dto);
     }
 
     [HttpGet("{id:int}/trades")]
@@ -249,6 +264,27 @@ public sealed class RunsController : ControllerBase
         return File(bytes, "text/csv", $"run-{id}.csv");
     }
 
+    // ── Diagnostic decision log (JSONL) ─────────────────────────────────
+
+    // Download the per-(stock, day) decision funnel for a run.
+    [HttpGet("{id:int}/log")]
+    public IActionResult Log(int id)
+    {
+        if (!_logStore.Exists(id)) return NotFound();
+        var stream = new FileStream(_logStore.PathFor(id), FileMode.Open, FileAccess.Read, FileShare.Read);
+        return File(stream, "application/x-ndjson", $"run-{id}-log.jsonl");
+    }
+
+    // Delete one run's diagnostic log to reclaim disk.
+    [HttpDelete("{id:int}/log")]
+    public IActionResult DeleteLog(int id) =>
+        _logStore.Delete(id) ? NoContent() : NotFound();
+
+    // Delete every diagnostic log in one shot.
+    [HttpDelete("logs")]
+    public ActionResult<DeleteLogsResponse> DeleteAllLogs() =>
+        Ok(new DeleteLogsResponse { DeletedCount = _logStore.DeleteAll() });
+
     private static string EscapeCsv(string value) =>
         value.Contains(',') || value.Contains('"') || value.Contains('\n')
             ? $"\"{value.Replace("\"", "\"\"")}\""
@@ -268,6 +304,7 @@ public sealed class RunsController : ControllerBase
         TradeCount = r.TradeCount,
         TotalPnL = r.TotalPnL,
         ErrorMessage = r.ErrorMessage,
+        DiagnosticLogEnabled = r.DiagnosticLogEnabled,
     };
 
     private static BacktestRunDetailDto ToDetail(BacktestRun r) => new()
@@ -290,6 +327,7 @@ public sealed class RunsController : ControllerBase
         BacktestDays = r.BacktestDays,
         ScreenerType = r.StrategyPreset?.ScreenerType ?? "",
         StrategyType = r.StrategyPreset?.StrategyType ?? "",
+        DiagnosticLogEnabled = r.DiagnosticLogEnabled,
     };
 
     private static TradeRecordDto ToTradeDto(TradeRecord t) => new()

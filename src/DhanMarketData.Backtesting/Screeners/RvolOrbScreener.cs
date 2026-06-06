@@ -1,3 +1,4 @@
+using DhanMarketData.Core.Diagnostics;
 using DhanMarketData.Core.Interfaces;
 using DhanMarketData.Core.Models;
 using DhanMarketData.Configs;
@@ -103,11 +104,27 @@ public class RvolOrbScreener : IScreener
         "gap not down enough (MinGapPct)",
     };
 
+    // Short stage slugs (aligned to FunnelLabels) for the per-stock diagnostic log.
+    private static readonly string[] FunnelStages = new[]
+    {
+        "no_intraday", "no_daily", "no_futures", "or_doji", "min_price",
+        "yday_range", "atr_pct", "rupee_vol", "or_red", "rvol_floor",
+        "oi_unavailable", "oi_delta_flat", "oi_conflict", "score_low",
+        "passed", "day_skipped", "gap_not_down",
+    };
+
     private readonly long[] _funnel = new long[FunnelLabels.Length];
+
+    // Per-evaluation diagnostic sink + the OR-open price for the current
+    // evaluation. Set at the top of MeetsSignal; null when logging is off.
+    // Single screener instance per run, days processed sequentially → safe.
+    private ScreenDecisionRecorder? _rec;
+    private decimal? _orOpenForLog;
 
     private bool Drop(int step, out ScreenerSignal signal)
     {
         _funnel[step]++;
+        _rec?.Reject(FunnelStages[step], FunnelLabels[step], _orOpenForLog);
         signal = new ScreenerSignal(new List<Candle>(), 0m, 0m);
         return false;
     }
@@ -145,6 +162,11 @@ public class RvolOrbScreener : IScreener
     public bool MeetsSignal(ScreenerContext context, out ScreenerSignal signal)
     {
         signal = new ScreenerSignal(new List<Candle>(), 0m, 0m);
+
+        // Per-evaluation diagnostic sink (null unless logging is on). Drop()
+        // reads these to record the rejecting stage + the OR-open price.
+        _rec = context.Decisions;
+        _orOpenForLog = null;
 
         // ── 1. Data sanity ──────────────────────────────────────────────
         var intraday = context.Intraday;
@@ -187,6 +209,7 @@ public class RvolOrbScreener : IScreener
         var orLow    = orCandles.Min(c => c.Low);
         var orVolume = orCandles.Sum(c => c.Volume);
         var orRange  = orHigh - orLow;
+        _orOpenForLog = orOpen; // price anchor for any subsequent diagnostic drop
 
         // Doji rejection: |close - open| / range must exceed the threshold.
         if (orRange <= 0) return Drop(F_OrDoji, out signal);

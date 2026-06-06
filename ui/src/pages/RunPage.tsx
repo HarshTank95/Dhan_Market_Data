@@ -23,6 +23,7 @@ export function RunPage() {
   const [stockCount, setStockCount] = useState(500)
   const [backtestDays, setBacktestDays] = useState(50)
   const [timeframe, setTimeframe] = useState('5min')
+  const [enableLog, setEnableLog] = useState(false)
   const [activeRunId, setActiveRunId] = useState<number | null>(() => readStoredRunId())
 
   const progress = useBacktestProgress(activeRunId)
@@ -34,6 +35,7 @@ export function RunPage() {
       backtestDays,
       timeframe,
       exchangeSegment: 'NSE_EQ',
+      enableDiagnosticLog: enableLog,
     }),
     onSuccess: r => {
       try { localStorage.setItem(ACTIVE_RUN_KEY, String(r.runId)) } catch {}
@@ -109,6 +111,22 @@ export function RunPage() {
             </select>
           </Field>
         </div>
+        <label className="mt-4 flex items-start gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={enableLog}
+            onChange={e => setEnableLog(e.target.checked)}
+            disabled={active}
+            className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-900 accent-emerald-500 disabled:opacity-50"
+          />
+          <span>
+            Enable detailed log
+            <span className="ml-2 text-xs text-zinc-500">
+              Records why every screened stock was kept or dropped (downloadable JSONL on the
+              Results tab). Large file — leave off unless you're validating the strategy.
+            </span>
+          </span>
+        </label>
         <div className="mt-4 flex gap-2">
           <button
             onClick={() => start.mutate()}

@@ -74,6 +74,13 @@ export const api = {
     request<TradeList>(`/api/runs/${id}/trades?page=${page}&pageSize=${pageSize}`),
   csvUrl: (id: number) => `/api/runs/${id}/csv`,
 
+  // Diagnostic decision log (JSONL)
+  logUrl: (id: number) => `/api/runs/${id}/log`,
+  deleteLog: (id: number) =>
+    request<void>(`/api/runs/${id}/log`, { method: 'DELETE' }),
+  deleteAllLogs: () =>
+    request<{ deletedCount: number }>('/api/runs/logs', { method: 'DELETE' }),
+
   // Credentials
   getCredentials: () => request<CredentialsStatus>('/api/credentials'),
   setCredentials: (clientId: string, accessToken: string) =>

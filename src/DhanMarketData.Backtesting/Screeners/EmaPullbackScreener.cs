@@ -86,14 +86,18 @@ public class EmaPullbackScreener : IScreener
     private bool Scan(ScreenerContext context, out ScanResult result)
     {
         result = default;
+        var log = context.Decisions; // null unless diagnostic logging is on — pure side-channel
 
         var intraday = context.Intraday;
         var daily = context.Daily;
-        if (intraday == null || intraday.Count == 0) return false;
-        if (daily == null || daily.Count < _config.MinHistoricalDays) return false;
+        if (intraday == null || intraday.Count == 0)
+        { log?.Reject("no_intraday", "no intraday candles"); return false; }
+        if (daily == null || daily.Count < _config.MinHistoricalDays)
+        { log?.Reject("min_history", $"daily candles={daily?.Count ?? 0} < required {_config.MinHistoricalDays}"); return false; }
 
         var minIntraday = Math.Max(_config.SlowEmaPeriod, _config.IntradayAtrPeriod) + _config.SlopeLookback + 1;
-        if (intraday.Count < minIntraday) return false;
+        if (intraday.Count < minIntraday)
+        { log?.Reject("insufficient_intraday", $"intraday candles={intraday.Count} < required {minIntraday}"); return false; }
 
         var sortedIntraday = intraday.OrderBy(c => c.Timestamp).ToList();
         var currentDay = sortedIntraday[^1].Timestamp.Date;
@@ -101,42 +105,52 @@ public class EmaPullbackScreener : IScreener
         // ── 1. Liquidity / price ─────────────────────────────────────
         var sortedDaily = daily.OrderBy(c => c.Timestamp).ToList();
         var prevDay = sortedDaily[^1];
-        if (prevDay.Close < _config.MinPrice) return false;
+        if (prevDay.Close < _config.MinPrice)
+        { log?.Reject("min_price", $"prev close ₹{prevDay.Close:F2} < min ₹{_config.MinPrice:F2}", prevDay.Close); return false; }
 
         var dailyAvgVolDays = Math.Min(20, sortedDaily.Count);
         var avgDailyVol = sortedDaily.OrderByDescending(c => c.Timestamp)
             .Take(dailyAvgVolDays).Average(c => (double)c.Volume);
-        if (avgDailyVol < _config.MinAverageDailyVolume) return false;
+        if (avgDailyVol < _config.MinAverageDailyVolume)
+        { log?.Reject("liquidity", $"avg daily vol {avgDailyVol:N0} < min {_config.MinAverageDailyVolume:N0}", prevDay.Close); return false; }
 
         // ── 2. Daily ATR % floor ─────────────────────────────────────
         var dailyAtr = ComputeAtrWilder(sortedDaily, _config.DailyAtrPeriod);
-        if (dailyAtr <= 0) return false;
-        if ((dailyAtr / prevDay.Close) * 100m < _config.MinDailyAtrPct) return false;
+        if (dailyAtr <= 0)
+        { log?.Reject("atr_unavailable", "daily ATR ≤ 0 (insufficient history)"); return false; }
+        if ((dailyAtr / prevDay.Close) * 100m < _config.MinDailyAtrPct)
+        { log?.Reject("daily_atr_pct", $"daily ATR {(dailyAtr / prevDay.Close) * 100m:F2}% < min {_config.MinDailyAtrPct:F2}%", prevDay.Close); return false; }
 
         // ── 3. Daily trend band ──────────────────────────────────────
         var smaPeriod = Math.Min(_config.DailyTrendSmaPeriod, sortedDaily.Count);
         var dailySma = sortedDaily.OrderByDescending(c => c.Timestamp).Take(smaPeriod).Average(c => c.Close);
         var dailyTrendPct = dailySma > 0 ? (prevDay.Close - dailySma) / prevDay.Close * 100m : 0m;
-        if (dailyTrendPct < _config.MinDailyTrendPct) return false;
-        if (_config.MaxDailyTrendPct > 0 && dailyTrendPct > _config.MaxDailyTrendPct) return false;
+        if (dailyTrendPct < _config.MinDailyTrendPct)
+        { log?.Reject("trend_too_weak", $"price {dailyTrendPct:F2}% above SMA{smaPeriod} < min {_config.MinDailyTrendPct:F2}%", prevDay.Close); return false; }
+        if (_config.MaxDailyTrendPct > 0 && dailyTrendPct > _config.MaxDailyTrendPct)
+        { log?.Reject("trend_too_extended", $"price {dailyTrendPct:F2}% above SMA{smaPeriod} > max {_config.MaxDailyTrendPct:F2}%", prevDay.Close); return false; }
 
         // Per-day candle groups (for RVOL same-time baseline).
         var byDay = sortedIntraday.GroupBy(c => c.Timestamp.Date)
             .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Timestamp).ToList());
         var todayCandles = byDay[currentDay];
         var firstTodayIdx = sortedIntraday.FindIndex(c => c.Timestamp.Date == currentDay);
-        if (todayCandles.Count == 0 || firstTodayIdx < 0) return false;
+        if (todayCandles.Count == 0 || firstTodayIdx < 0)
+        { log?.Reject("no_current_day", "no intraday candles for the current day"); return false; }
 
         // ── 4. Gap (optional) ────────────────────────────────────────
         var gapPct = prevDay.Close > 0 ? (todayCandles[0].Open - prevDay.Close) / prevDay.Close * 100m : 0m;
         if (_config.MinGapPct > 0)
         {
-            if (gapPct < _config.MinGapPct) return false;
-            if (_config.MaxGapPct > 0 && gapPct > _config.MaxGapPct) return false;
+            if (gapPct < _config.MinGapPct)
+            { log?.Reject("gap_below_min", $"gap {gapPct:F2}% < min {_config.MinGapPct:F2}%", todayCandles[0].Open); return false; }
+            if (_config.MaxGapPct > 0 && gapPct > _config.MaxGapPct)
+            { log?.Reject("gap_above_max", $"gap {gapPct:F2}% > max {_config.MaxGapPct:F2}%", todayCandles[0].Open); return false; }
         }
         // Buy-the-dip selection (Run #83): require today's gap ≤ MaxEntryGapPct.
         // The edge concentrates in uptrending stocks that gapped DOWN.
-        if (gapPct > _config.MaxEntryGapPct) return false;
+        if (gapPct > _config.MaxEntryGapPct)
+        { log?.Reject("gap_not_down", $"gap {gapPct:F2}% > max entry gap {_config.MaxEntryGapPct:F2}% (need gap-down)", todayCandles[0].Open); return false; }
 
         // ── Pre-compute aligned indicator series ─────────────────────
         var fastEma = ComputeEma(sortedIntraday, _config.FastEmaPeriod);
@@ -156,6 +170,11 @@ public class EmaPullbackScreener : IScreener
         var priorDays = byDay.Keys.Where(d => d < currentDay).OrderByDescending(d => d)
             .Take(_config.RvolLookbackDays).ToList();
 
+        // Per-candle trigger scan. A `continue` is NOT terminal (a later candle
+        // may still trigger), so we record the FURTHEST stage any candle reached
+        // via Note(rank,…); on loop fallthrough that becomes the drop reason —
+        // telling us how close the stock got to a signal. Ranks increase with
+        // filter depth. Pure side-channel; control flow is unchanged.
         for (int i = 0; i < sortedIntraday.Count; i++)
         {
             var c = sortedIntraday[i];
@@ -165,50 +184,54 @@ public class EmaPullbackScreener : IScreener
             var t = c.Timestamp.TimeOfDay;
             var inMorning = t >= morningStartUtc && t <= morningEndUtc;
             var inAfternoon = t >= afternoonStartUtc && t <= afternoonEndUtc;
-            if (!inMorning && !inAfternoon) continue;
+            if (!inMorning && !inAfternoon) { log?.Note(0, "outside_window", "no candle in the entry time window", c.Close); continue; }
 
             // (a) trend stack + slope + distance
-            if (fastEma[i] <= slowEma[i]) continue;
+            if (fastEma[i] <= slowEma[i]) { log?.Note(1, "ema_not_stacked", "9-EMA ≤ 20-EMA (no uptrend stack)", c.Close); continue; }
             var slopeFromIdx = i - _config.SlopeLookback;
-            if (slopeFromIdx < 0 || slowEma[i] <= slowEma[slopeFromIdx]) continue;
+            if (slopeFromIdx < 0 || slowEma[i] <= slowEma[slopeFromIdx]) { log?.Note(2, "slow_ema_not_rising", "20-EMA not rising over slope lookback", c.Close); continue; }
             var atr = atrSeries[i];
-            if (atr <= 0) continue;
+            if (atr <= 0) { log?.Note(2, "intraday_atr_zero", "intraday ATR ≤ 0", c.Close); continue; }
             var emaDistAtr = (fastEma[i] - slowEma[i]) / atr;
-            if (emaDistAtr < _config.MinEmaDistanceAtr || emaDistAtr > _config.MaxEmaDistanceAtr) continue;
+            if (emaDistAtr < _config.MinEmaDistanceAtr || emaDistAtr > _config.MaxEmaDistanceAtr) { log?.Note(3, "ema_distance_band", $"EMA gap {emaDistAtr:F2} ATR outside [{_config.MinEmaDistanceAtr:F2}, {_config.MaxEmaDistanceAtr:F2}]", c.Close); continue; }
 
             // (b) pullback touch + bullish close above
-            if (c.Low > fastEma[i] || c.High < fastEma[i]) continue;
-            if (c.Close <= fastEma[i]) continue;
-            if (c.Close <= c.Open) continue;
-            if (_config.RequireEngulfing && c.Close <= sortedIntraday[i - 1].High) continue;
+            if (c.Low > fastEma[i] || c.High < fastEma[i]) { log?.Note(4, "no_pullback_touch", "candle did not touch the 9-EMA", c.Close); continue; }
+            if (c.Close <= fastEma[i]) { log?.Note(5, "close_below_ema", "close ≤ 9-EMA (no reclaim)", c.Close); continue; }
+            if (c.Close <= c.Open) { log?.Note(5, "not_bullish", "candle not bullish (close ≤ open)", c.Close); continue; }
+            if (_config.RequireEngulfing && c.Close <= sortedIntraday[i - 1].High) { log?.Note(6, "not_engulfing", "close did not engulf prior bar high", c.Close); continue; }
 
             // (c) stop-distance band
             var stopDist = c.Close - c.Low;
-            if (stopDist <= 0) continue;
+            if (stopDist <= 0) { log?.Note(6, "bad_stop_distance", "non-positive stop distance", c.Close); continue; }
             var stopDistPct = stopDist / c.Close * 100m;
-            if (_config.MinStopDistancePct > 0 && stopDistPct < _config.MinStopDistancePct) continue;
-            if (_config.MaxStopDistancePct > 0 && stopDistPct > _config.MaxStopDistancePct) continue;
+            if (_config.MinStopDistancePct > 0 && stopDistPct < _config.MinStopDistancePct) { log?.Note(7, "stop_too_tight", $"stop {stopDistPct:F2}% < min {_config.MinStopDistancePct:F2}%", c.Close); continue; }
+            if (_config.MaxStopDistancePct > 0 && stopDistPct > _config.MaxStopDistancePct) { log?.Note(7, "stop_too_wide", $"stop {stopDistPct:F2}% > max {_config.MaxStopDistancePct:F2}%", c.Close); continue; }
 
             // (d) ADX regime filter — skip chop (min) and exhausted/extended moves (max)
             var adx = adxSeries[i];
-            if (_config.MinAdx > 0 && adx < _config.MinAdx) continue;
-            if (_config.MaxAdx > 0 && adx > _config.MaxAdx) continue;
+            if (_config.MinAdx > 0 && adx < _config.MinAdx) { log?.Note(8, "adx_too_low", $"ADX {adx:F1} < min {_config.MinAdx:F1} (chop)", c.Close); continue; }
+            if (_config.MaxAdx > 0 && adx > _config.MaxAdx) { log?.Note(8, "adx_too_high", $"ADX {adx:F1} > max {_config.MaxAdx:F1} (exhausted)", c.Close); continue; }
 
             // (e) RVOL — stock must be "in play"
             var rvol = ComputeRvol(byDay, priorDays, todayCandles, i - firstTodayIdx);
-            if (_config.MinRvol > 0 && rvol < _config.MinRvol) continue;
+            if (_config.MinRvol > 0 && rvol < _config.MinRvol) { log?.Note(9, "rvol_too_low", $"RVOL {rvol:F2} < min {_config.MinRvol:F2} (not in play)", c.Close); continue; }
 
             // (f) trigger volume expansion
             if (_config.MinTriggerVolMult > 0)
             {
                 var volMult = ComputeTriggerVolMult(sortedIntraday, i, 20);
-                if (volMult < _config.MinTriggerVolMult) continue;
+                if (volMult < _config.MinTriggerVolMult) { log?.Note(10, "trigger_vol_weak", $"trigger vol {volMult:F2}× < min {_config.MinTriggerVolMult:F2}×", c.Close); continue; }
             }
 
             result = new ScanResult(c, atr, rvol, adx, gapPct);
             return true;
         }
 
+        // No candle triggered. If logging is on and no per-candle Note was
+        // recorded (e.g. zero candles in range), leave a generic reason.
+        if (log is not null && !log.HasReason)
+            log.Reject("no_trigger", "no intraday candle reached the trigger conditions");
         return false;
     }
 

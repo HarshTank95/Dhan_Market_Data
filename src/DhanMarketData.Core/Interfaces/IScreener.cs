@@ -1,3 +1,4 @@
+using DhanMarketData.Core.Diagnostics;
 using DhanMarketData.Core.Models;
 
 namespace DhanMarketData.Core.Interfaces;
@@ -12,7 +13,17 @@ namespace DhanMarketData.Core.Interfaces;
 public sealed record ScreenerContext(
     List<Candle> Intraday,
     List<Candle>? Daily = null,
-    List<Candle>? Futures = null);
+    List<Candle>? Futures = null)
+{
+    /// <summary>
+    /// Optional rejection-reason sink. Non-null only when diagnostic logging
+    /// is enabled for the run. Screeners call <c>Decisions?.Reject(...)</c> /
+    /// <c>Decisions?.Note(...)</c> at drop sites — a pure side-channel that
+    /// never changes the screener's boolean result. Null = no logging (the
+    /// byte-identical default path).
+    /// </summary>
+    public ScreenDecisionRecorder? Decisions { get; init; }
+}
 
 /// <summary>
 /// What a screener returns when it picks a stock for today.

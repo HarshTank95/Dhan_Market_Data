@@ -1,3 +1,4 @@
+using DhanMarketData.Core.Diagnostics;
 using DhanMarketData.Core.Interfaces;
 using DhanMarketData.Core.Models;
 using DhanMarketData.Configs;
@@ -64,15 +65,68 @@ public class BacktestEngine
         List<Candle> candles,
         List<Candle>? dailyCandles,
         List<Candle>? futuresCandles)
+        => BacktestDayCore(symbol, securityId, date, candles, dailyCandles, futuresCandles,
+            recorder: null, out _);
+
+    /// <summary>
+    /// Diagnostics overload (additive). Identical screening to
+    /// <see cref="BacktestDay(string,string,DateTime,List{Candle},List{Candle}?,List{Candle}?)"/>,
+    /// but threads a recorder so the screener's drop reason is captured and
+    /// returns a finalized <see cref="ScreenDecision"/> alongside the trade.
+    /// Used only when diagnostic logging is enabled for the run.
+    /// </summary>
+    public (Trade? Trade, ScreenDecision Decision) BacktestDayWithDecision(
+        string symbol,
+        string securityId,
+        DateTime date,
+        List<Candle> candles,
+        List<Candle>? dailyCandles,
+        List<Candle>? futuresCandles)
     {
-        var context = new ScreenerContext(candles, dailyCandles, futuresCandles);
+        var recorder = new ScreenDecisionRecorder();
+        var trade = BacktestDayCore(symbol, securityId, date, candles, dailyCandles, futuresCandles,
+            recorder, out var decision);
+        return (trade, decision!);
+    }
+
+    // Single screening implementation shared by both public entrypoints.
+    // When `recorder` is null the `decision is not null` branches and the
+    // context's Decisions sink are all inert, so the method behaves
+    // byte-identically to the original BacktestDay.
+    private Trade? BacktestDayCore(
+        string symbol,
+        string securityId,
+        DateTime date,
+        List<Candle> candles,
+        List<Candle>? dailyCandles,
+        List<Candle>? futuresCandles,
+        ScreenDecisionRecorder? recorder,
+        out ScreenDecision? decision)
+    {
+        decision = recorder is null
+            ? null
+            : new ScreenDecision { Symbol = symbol, SecurityId = securityId, Date = date };
+
+        var context = new ScreenerContext(candles, dailyCandles, futuresCandles)
+        {
+            Decisions = recorder,
+        };
 
         // Phase 9C: call MeetsSignal so screeners that compute a sizing
         // multiplier can pass it through. Legacy screeners inherit the
         // default impl that wraps MeetsConditions with multiplier=1.0
         // — byte-identical behavior preserved.
         if (!_screener.MeetsSignal(context, out var signal))
+        {
+            if (decision is not null)
+            {
+                decision.Outcome = "rejected";
+                decision.Stage = recorder!.Stage ?? "screen";
+                decision.Detail = recorder.Detail ?? "screener conditions not met";
+                decision.Price = recorder.Price;
+            }
             return null;
+        }
 
         // Convert IST config times to UTC for comparison
         var entryTimeUtc = IstToUtc(_tradingConfig.EntryTime);
@@ -80,7 +134,14 @@ public class BacktestEngine
         // Find entry candle at configured entry time (default 09:30 IST = 04:00 UTC)
         var entryCandle = candles.FirstOrDefault(c => c.Timestamp.TimeOfDay >= entryTimeUtc);
         if (entryCandle == null)
+        {
+            if (decision is not null)
+            {
+                decision.Outcome = "screened_no_entry";
+                decision.Detail = "screened in, but no candle at/after the configured entry time";
+            }
             return null;
+        }
 
         // Delegate to the 8-arg multiplier+ATR overload. Legacy strategies
         // inherit the default that drops the new args and delegates back
@@ -90,9 +151,41 @@ public class BacktestEngine
         // Prefer the full-signal overload so strategies can write the
         // rich context (RvolAtEntry, OrWidthPct, GapPct) onto Trade.
         // Legacy strategies' default impl drops the extras and forwards.
-        return _strategy.ExecuteTrade(
+        var trade = _strategy.ExecuteTrade(
             symbol, securityId, date, candles,
             signal, entryCandle);
+
+        if (decision is not null)
+        {
+            if (trade is null)
+            {
+                decision.Outcome = "no_signal";
+                decision.Detail = "screened in with an entry candle, but the strategy produced no trade";
+                decision.Price = entryCandle.Close;
+            }
+            else
+            {
+                FillTradeFields(decision, trade);
+            }
+        }
+
+        return trade;
+    }
+
+    private static void FillTradeFields(ScreenDecision d, Trade t)
+    {
+        d.Outcome = "traded";
+        d.EntryTime = t.EntryTime;
+        d.EntryPrice = t.EntryPrice;
+        d.Price = t.EntryPrice;
+        d.Quantity = t.Quantity;
+        d.StopLoss = t.StopLoss;
+        d.Target = t.Target;
+        d.ExitTime = t.ExitTime;
+        d.ExitPrice = t.ExitPrice;
+        d.ExitReason = t.ExitReason;
+        d.Pnl = t.PnL;
+        d.PnlPercent = t.PnLPercent;
     }
 
     public void PrintSummary(List<Trade> trades)

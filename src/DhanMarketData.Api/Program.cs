@@ -44,6 +44,7 @@ builder.Services.AddSingleton<FuturesContractResolver>();
 builder.Services.AddSingleton<TradingCalendarService>();
 builder.Services.AddSingleton<ReportService>();
 builder.Services.AddSingleton<ITokenProtector, DpapiTokenProtector>();
+builder.Services.AddSingleton<IBacktestLogStore, BacktestLogStore>();
 builder.Services.AddSingleton<DhanMarketData.Infrastructure.Auth.DhanAuthClient>();
 
 // Run queue: one underlying instance, exposed via interface AND concrete type

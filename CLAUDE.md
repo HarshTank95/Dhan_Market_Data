@@ -11,6 +11,7 @@ This file auto-loads. For deeper context, read in this order:
 5. `docs/data-fetching.md` — Dhan API constraints, cache layout, token storage
 6. `RESTRUCTURE_CHANGELOG.md` — what was migrated from console → web (Phases 1–6)
 7. `docs/strategy-optimization-playbook.md` — reusable, criteria-driven method to take *any* strategy from idea/loss to a robust positive-expectancy preset (measure-don't-guess loop, robustness gates, lock-in checklist). Hand it to Claude with a hypothesis + success criteria.
+8. `docs/diagnostics-log.md` — opt-in per-run JSONL audit log (`logs/run-{id}.jsonl`): why every screened stock was kept/dropped, which filter, at what price. Enabled via the Run tab's "Enable detailed log" checkbox; download/delete from the Results tab.
 
 ## Current state
 
@@ -48,6 +49,7 @@ Open `http://localhost:5173` → set credentials → run a backtest.
 - **`FetchProgress` is a separate SignalR event from `ChunkProgress`.** It fires per-stock during the cache warmup phase so the UI's progress bar moves before any chunk completes. `signalr.ts` weights it ~70% of the composite progress bar.
 - **`activeRunId` lives in `localStorage`** (`dhan.activeRunId`) so the Run tab survives navigation away and back. Cleared on terminal status. The Run page hydrates state via `getRun + getRunTrades` after `JoinRun` to handle missed events during reconnect; trades are de-duped by `id`.
 - **Queue tab is the operator console for running work.** It polls `/api/runs` every 1.5 s and shows every `Queued`/`Running`/`Cancelling` row; the Run tab only shows the currently-tracked run. If a user reports "stuck" rows, point them at the Queue tab first.
+- **Diagnostic decision log is a pure side-channel** (`docs/diagnostics-log.md`). When a run has `DiagnosticLogEnabled`, the engine emits a per-`(stock, day)` reason via `ScreenerContext.Decisions` (a `ScreenDecisionRecorder`) and the orchestrator streams it to `logs/run-{id}.jsonl`. Screeners only *add* `Decisions?.Reject(...)`/`Note(...)` calls at existing drop sites — they never change the boolean result, so with logging off (the default) the path is byte-identical. If you add a new screener filter, add a matching `Reject`/`Note` so the funnel stays complete.
 
 ## Tech versions (locked in)
 
