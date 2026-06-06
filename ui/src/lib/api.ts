@@ -30,6 +30,7 @@ import type {
   BacktestRunDetail,
   BacktestRunSummary,
   CredentialsStatus,
+  GenerateTokenResult,
   RegistryEntry,
   StartRunRequest,
   StrategyPresetDetail,
@@ -79,5 +80,15 @@ export const api = {
     request<CredentialsStatus>('/api/credentials', {
       method: 'PUT',
       json: { clientId, accessToken },
+    }),
+  setSecrets: (clientId: string, pin: string, totpSeed: string) =>
+    request<CredentialsStatus>('/api/credentials/secrets', {
+      method: 'PUT',
+      json: { clientId, pin, totpSeed },
+    }),
+  generateToken: (forceGenerate = false, totp?: string, pin?: string, clientId?: string) =>
+    request<GenerateTokenResult>('/api/credentials/generate', {
+      method: 'POST',
+      json: { forceGenerate, totp, pin, clientId },
     }),
 }

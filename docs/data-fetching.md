@@ -49,11 +49,17 @@ The current orchestrator fetches one trading day per API call, so this is never 
 
 ## Tokens
 
-Stored encrypted at rest in SQLite (`ApiCredentials` row, `AccessTokenEncrypted` column). Encryption is Windows DPAPI under `DataProtectionScope.CurrentUser` — only the same Windows user account on the same machine can decrypt.
+Stored encrypted at rest in SQLite (`ApiCredentials` row). The access token, plus the optional Pin and TOTP seed, are each encrypted with Windows DPAPI under `DataProtectionScope.CurrentUser` — only the same Windows user account on the same machine can decrypt. Secrets are write-only over the API (never returned). The legacy `appsettings.local.json` path is **no longer used**.
 
-Set the token via the **Credentials** page in the UI (or `PUT /api/credentials`). The legacy `appsettings.local.json` path is **no longer used** by the API.
+Three ways to set the active token, all via the **Credentials** page (or the `/api/credentials*` endpoints):
 
-Token expiry: Dhan tokens have a short TTL (the legacy notes say ~5 days, but this isn't in the current public Dhan v2 docs). Surface auth errors when they happen rather than relying on a hardcoded TTL.
+1. **Generate (TOTP)** — `POST /api/credentials/generate` with `clientId` + `pin` + `totp` (the current 6-digit authenticator code). Calls Dhan's `POST https://auth.dhan.co/app/generateAccessToken` (params on the **query string** — confirmed shape) and saves the returned token. Mints a token even when the current one is expired. *(Optionally, a stored base32 TOTP seed lets the app generate the 6-digit code itself via RFC 6238 — most users don't have the seed and just type the code.)*
+2. **Renew** — same endpoint with no `totp`. Calls `GET https://api.dhan.co/v2/RenewToken` (current token in the `access-token` header) to roll an **active** token forward ~24h with no secrets. Fails if the token is already expired (Dhan rejects it) — then fall back to Generate.
+3. **Paste** — `PUT /api/credentials` with a token you generated yourself on Dhan web.
+
+Field-name gotchas (the two Dhan auth endpoints are inconsistent): **RenewToken returns the JWT in `token`**, while generateAccessToken's doc says `accessToken` — `DhanAuthClient.ParseTokenResponse` accepts either. Dhan also signals failures (e.g. `Invalid TOTP`) with `{ "status":"error", "message":... }` on an HTTP 200, surfaced as a clean error. All of this lives in `DhanMarketData.Infrastructure/Auth/` (`DhanAuthClient`, `TotpGenerator`, `JwtHelper`); orchestration is `TokenGenerationService` (Api).
+
+Token expiry is read from the JWT's `exp` claim (`JwtHelper`) and cached in `ApiCredentials.TokenExpiresAt` for the UI status line. A generated/renewed token is valid ~24h. Surface auth errors when they happen rather than relying on a hardcoded TTL.
 
 ## Errors
 

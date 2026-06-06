@@ -44,6 +44,7 @@ builder.Services.AddSingleton<FuturesContractResolver>();
 builder.Services.AddSingleton<TradingCalendarService>();
 builder.Services.AddSingleton<ReportService>();
 builder.Services.AddSingleton<ITokenProtector, DpapiTokenProtector>();
+builder.Services.AddSingleton<DhanMarketData.Infrastructure.Auth.DhanAuthClient>();
 
 // Run queue: one underlying instance, exposed via interface AND concrete type
 // so the runner can call internal helpers like TryUnregister.
@@ -53,6 +54,7 @@ builder.Services.AddSingleton<IBacktestHubBroadcaster, BacktestHubBroadcaster>()
 
 // -------- Scoped services (depend on scoped repos / DbContext) --------
 builder.Services.AddScoped<IPresetExecutor, PresetExecutor>();
+builder.Services.AddScoped<ITokenGenerationService, TokenGenerationService>();
 
 // -------- Hosted runner --------
 builder.Services.AddHostedService<BacktestRunner>();

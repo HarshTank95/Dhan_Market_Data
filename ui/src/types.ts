@@ -94,7 +94,14 @@ export interface TradeList {
 export interface CredentialsStatus {
   clientId: string
   hasToken: boolean
+  tokenExpiresAt: string | null
+  canGenerate: boolean
   updatedAt: string | null
+}
+
+export interface GenerateTokenResult {
+  method: string
+  tokenExpiresAt: string | null
 }
 
 export interface StartRunRequest {
