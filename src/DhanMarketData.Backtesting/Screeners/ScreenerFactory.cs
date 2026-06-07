@@ -21,15 +21,6 @@ public static class ScreenerFactory
             "breakout" => new BreakoutScreener(
                 configuration.GetSection("Screeners:Breakout").Get<BreakoutConfig>()
             ),
-            "gapfade" => new GapFadeScreener(
-                configuration.GetSection("Screeners:GapFade").Get<GapFadeConfig>() ?? new GapFadeConfig()
-            ),
-            "rvolorb" => new RvolOrbScreener(
-                configuration.GetSection("Screeners:RvolOrb").Get<RvolOrbConfig>() ?? new RvolOrbConfig()
-            ),
-            "emapullback" => new EmaPullbackScreener(
-                configuration.GetSection("Screeners:EmaPullback").Get<EmaPullbackScreenerConfig>() ?? new EmaPullbackScreenerConfig()
-            ),
             "vwaporb" => new VwapOrbScreener(
                 configuration.GetSection("Screeners:VwapOrb").Get<VwapOrbScreenerConfig>() ?? new VwapOrbScreenerConfig()
             ),
@@ -42,9 +33,6 @@ public static class ScreenerFactory
         return new List<string>
         {
             "breakout",
-            "gapfade",
-            "rvolorb",
-            "emapullback",
             "vwaporb"
         };
     }
@@ -54,9 +42,6 @@ public static class ScreenerFactory
         return new Dictionary<string, string>
         {
             { "breakout", "Detects price breakouts from consolidation zones" },
-            { "gapfade", "Quiet, ATR-normalized gap-downs on liquid trending stocks (mean-reversion candidates)" },
-            { "rvolorb", "F&O-eligible 15-min ORB filtered by cash RVOL and futures OI direction (long-only v1)" },
-            { "emapullback", "Buy-the-dip: uptrending stocks (2–10% above 20-day SMA) that gapped down ≥1.5%, entered on the intraday 9-EMA reclaim" },
             { "vwaporb", "Momentum: Mon/Wed liquid (≥30L) higher-priced (≥₹500) stock breaks above its opening-range high while holding a rising VWAP (slope 20–50 bps) on a non-negative gap day" }
         };
     }

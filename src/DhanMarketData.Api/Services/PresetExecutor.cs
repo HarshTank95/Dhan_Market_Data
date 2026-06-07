@@ -83,9 +83,6 @@ public sealed class PresetExecutor : IPresetExecutor
         var screenerSectionKey = preset.ScreenerType.ToLowerInvariant() switch
         {
             "breakout" => "Breakout",
-            "gapfade" => "GapFade",
-            "rvolorb" => "RvolOrb",
-            "emapullback" => "EmaPullback",
             "vwaporb" => "VwapOrb",
             _ => throw new ArgumentException($"Unknown screener type: {preset.ScreenerType}"),
         };
@@ -100,9 +97,6 @@ public sealed class PresetExecutor : IPresetExecutor
         var strategiesNode = new JsonObject();
         var strategySectionKey = preset.StrategyType.ToLowerInvariant() switch
         {
-            "gapfadelong" => "GapFadeLong",
-            "confluenceorblong" => "ConfluenceOrbLong",
-            "emapullback" => "EmaPullback",
             "vwaporb" => "VwapOrb",
             _ => null,
         };
